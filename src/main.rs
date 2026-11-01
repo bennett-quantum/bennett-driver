@@ -62,6 +62,8 @@ impl Options {
                         | "bennett-native-backend"
                         | "bennett-native-support"
                         | "bennett-native-support-sha256"
+                        | "bennett-native-check"
+                        | "bennett-native-check-sha256"
                         | "bennett-classifier-input"
                         | "bennett-comparison-layout"
                         | "bennett-layout-data-base"
@@ -141,6 +143,8 @@ impl Options {
                         | "bennett-native-backend"
                         | "bennett-native-support"
                         | "bennett-native-support-sha256"
+                        | "bennett-native-check"
+                        | "bennett-native-check-sha256"
                         | "bennett-classifier-input"
                         | "bennett-comparison-layout"
                         | "bennett-comparison-record"
@@ -290,6 +294,41 @@ impl Build {
             ));
         }
         Ok(stdout)
+    }
+}
+/// Resolve imports introduced by later libraries before instrumenting globals
+/// or normalising callers. A single ordered --only-needed pass is insufficient
+/// when arithmetic introduces a runtime state dependency such as fenv.
+fn close_libraries(
+    b: &mut Build,
+    major: u32,
+    stage: &str,
+    module: &Path,
+    libraries: &[&Path],
+) -> Result<()> {
+    let mut previous = None;
+    loop {
+        let imports = b.run(
+            &format!("{stage}-imports"),
+            vec![
+                tool(major, "llvm-nm"),
+                "--undefined-only".into(),
+                module.display().to_string(),
+            ],
+            None,
+        )?;
+        if previous.as_ref() == Some(&imports) {
+            return Ok(());
+        }
+        previous = Some(imports);
+        let mut args = vec![tool(major, "llvm-link"), module.display().to_string()];
+        args.extend(libraries.iter().map(|p| p.display().to_string()));
+        args.extend([
+            "--only-needed".into(),
+            "-o".into(),
+            module.display().to_string(),
+        ]);
+        b.run(stage, args, None)?;
     }
 }
 fn sysroot_flags(o: &Options) -> Result<Vec<String>> {
@@ -482,6 +521,13 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
             None,
         )?;
     }
+    close_libraries(
+        b,
+        m,
+        "production-library-closure",
+        &linked,
+        &[&runtime, &arith],
+    )?;
     let pipeline = o.get("bennett-pipeline").unwrap_or("lto<O3>");
     b.run(
         "postlink",

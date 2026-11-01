@@ -33,6 +33,6 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='native-faults-') as te
                 p = subprocess.run([out/f'native-{level}'], capture_output=True, timeout=5)
                 assert p.returncode != 0 and f'bennett runtime fault {code}\n'.encode() == p.stderr, (major, name, level, p)
             coverage = json.loads((out/'native-detection.json').read_text())
-            assert coverage['subject'] == 'materialised' and coverage['general_memory'] is False
+            assert coverage['subject'] == 'materialised' and coverage['general_memory'] is True
             assert coverage['division_by_zero'] and coverage['signed_division_overflow']
-            assert coverage['status'] == 'incomplete' and coverage['blocked_on'] == ['brt-2qs']
+            assert coverage['status'] == 'instrumented' and coverage['infrastructure_exit_status'] == 125

@@ -42,6 +42,15 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='comparison-') as tmp:
         adapted=d/'harness-out'
         run([sys.argv[1],f'--bennett-llvm-major={m}',f'--bennett-materialised={d/"callee.bc"}',f'--bennett-native-input={harness}',f'--bennett-out={adapted}',f'--bennett-comparison-layout={layout}','--bennett-layout-data-base=65536'])
         for level in ('O0','O2'): assert run([adapted/f'native-{level}'])==b''
+        # A materialised callee must see the real extent of harness globals.
+        # They belong to the comparison's object metadata, even though the
+        # harness is added only after producer materialisation has been fixed.
+        consumer=d/'consumer.ll'
+        consumer.write_text('define i32 @inspect(ptr %p) { %v = load i8, ptr %p\n %n = zext i8 %v to i32\n ret i32 %n }\n')
+        harness.write_text('extern int inspect(const void *); unsigned char input=7; int main(void) { return inspect(&input)!=7; }')
+        global_out=d/'harness-global-out'
+        run([sys.argv[1],f'--bennett-llvm-major={m}',f'--bennett-materialised={consumer}',f'--bennett-native-input={harness}',f'--bennett-out={global_out}',f'--bennett-comparison-layout={layout}','--bennett-layout-data-base=65536'])
+        for level in ('O0','O2'): assert run([global_out/f'native-{level}'])==b''
         # H is the device address envelope, not the end of occupied ranges.
         # The exact first 2MiB boundary above data+heap is 0x600000, not 2^H.
         large=d/'large.json';large.write_text(json.dumps(json.loads(layout.read_text())|{'heap_limit_max':4194304,'H':23}))

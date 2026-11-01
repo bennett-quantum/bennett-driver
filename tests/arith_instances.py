@@ -31,8 +31,9 @@ define i32 @main() {
 ''')
         digest = sha(ir)
         layout = d/f'layout-{major}.json'
-        # Generated integer-core format tables occupy several data pages.
-        layout.write_text(json.dumps(dict(null_size=4096,ptr_width=64,heap_base=262144,
+        # Both O0/O2 link maps put data below 0x3f000. Retain exact equality
+        # with that first page boundary, rather than reserving a guessed page.
+        layout.write_text(json.dumps(dict(null_size=4096,ptr_width=64,heap_base=258048,
             heap_limit_max=1048576,globals={},interface_regions={})))
         out = d/f'out-{major}'
         run([sys.argv[1], f'--bennett-llvm-major={major}', f'--bennett-materialised={ir}',

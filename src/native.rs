@@ -151,41 +151,79 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         linked.display().to_string(),
     ];
     b.run("comparison-bitcode-link", bitcode_link.clone(), None)?;
+    close_libraries(
+        b,
+        m,
+        "comparison-materialised-closure",
+        &linked,
+        &[&runtime, &arith],
+    )?;
     audit_markers(b, m, &linked)?;
     let checked = b.out.join("comparison-checked.bc");
-    let check_ir = b.out.join("comparison-linked.ll");
-    let checked_ir = b.out.join("comparison-checked.ll");
-    b.run(
-        "comparison-check-input",
-        vec![
-            tool(m, "llvm-dis"),
-            linked.display().to_string(),
-            "-o".into(),
-            check_ir.display().to_string(),
-        ],
-        None,
+    let adapter = absolute(
+        o.get("bennett-native-check")
+            .map(PathBuf::from)
+            .unwrap_or(ws.join("bennett-runtimes/scripts/native-check")),
     )?;
+    b.record.set(
+        "native_check_adapter",
+        artifact(&adapter, o.get("bennett-native-check-sha256"))?,
+    );
+    // Include harness roots before the adapter emits its global-object table.
+    // Materialised callees may read data supplied by this comparison harness.
+    let check_input = b.out.join("comparison-check-input.bc");
+    let mut check_link = vec![tool(m, "llvm-link"), linked.display().to_string()];
+    check_link.extend(extras);
+    check_link.extend(["-o".into(), check_input.display().to_string()]);
+    b.run("comparison-check-inputs", check_link, None)?;
+    let linked_sha = sha(&linked)?;
     b.run(
         "comparison-checks",
         vec![
-            "python3".into(),
-            "-c".into(),
-            include_str!("../scripts/native-checks.py").into(),
-            check_ir.display().to_string(),
-            checked_ir.display().to_string(),
-            b.out.join("native-detection.json").display().to_string(),
-        ],
-        None,
-    )?;
-    b.run(
-        "comparison-check-assemble",
-        vec![
-            tool(m, "llvm-as"),
-            checked_ir.display().to_string(),
-            "-o".into(),
+            adapter.display().to_string(),
+            m.to_string(),
+            check_input.display().to_string(),
             checked.display().to_string(),
         ],
         None,
+    )?;
+    if sha(&device)? != device_sha || sha(&linked)? != linked_sha {
+        return Err("BD-E-NATIVE-CHECKS: adapter modified original materialised input".into());
+    }
+    b.run(
+        "comparison-check-verify",
+        vec![
+            tool(m, "opt"),
+            "-passes=verify".into(),
+            "-disable-output".into(),
+            checked.display().to_string(),
+        ],
+        None,
+    )?;
+    b.record
+        .set("checked_materialised", artifact(&checked, None)?);
+    let coverage = obj([
+        ("subject", "materialised".into()),
+        ("status", "instrumented".into()),
+        ("general_memory", true.into()),
+        ("use_after_free", true.into()),
+        ("out_of_live_allocation", true.into()),
+        ("memory_function_ranges", true.into()),
+        ("invalid_free", true.into()),
+        ("double_free", true.into()),
+        ("division_by_zero", true.into()),
+        ("signed_division_overflow", true.into()),
+        ("explicit_fault", true.into()),
+        ("unreachable", true.into()),
+        ("source_ub_erased_by_optimisation", false.into()),
+        ("infrastructure_exit_status", 125u32.into()),
+        ("adapter", artifact(&adapter, None)?),
+        ("materialised_sha256", device_sha.clone().into()),
+        ("checked_sha256", sha(&checked)?.into()),
+    ]);
+    write(
+        b.out.join("native-detection.json"),
+        coverage.encode() + "\n",
     )?;
     b.record.set(
         "native_detection",
@@ -237,9 +275,7 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
     );
     let adapted = b.out.join("comparison-adapted.bc");
     let mut support_link = vec![tool(m, "llvm-link"), checked.display().to_string()];
-    // A harness main is a root, not a --only-needed library: startup is added
-    // here, after the initial production closure.
-    support_link.extend(extras);
+    // Startup support stays outside checked producer/harness bodies.
     support_link.extend([
         config.display().to_string(),
         format!("--override={}", support.display()),
