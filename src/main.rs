@@ -49,7 +49,14 @@ impl Options {
                         | "bennett-arith-sha256"
                         | "bennett-pipeline"
                 );
-                let pass = matches!(key, "bennett-budget-default" | "bennett-budgets");
+                let pass = matches!(
+                    key,
+                    "bennett-budget-default"
+                        | "bennett-budgets"
+                        | "bennett-tier"
+                        | "bennett-entry"
+                        | "bennett-disk"
+                );
                 if !driver && !pass {
                     return Err(format!(
                         "BD-E-INPUT: unimplemented driver option {arg}; capability remains required by dialect §19"
@@ -59,7 +66,15 @@ impl Options {
                     return Err(format!("BD-E-INPUT: empty or duplicate option {key}"));
                 }
                 if pass {
-                    o.plugin_args.push(format!("-{key}={value}"));
+                    o.plugin_args.push(format!(
+                        "{}{}={value}",
+                        if matches!(key, "bennett-tier" | "bennett-entry" | "bennett-disk") {
+                            "--"
+                        } else {
+                            "-"
+                        },
+                        key
+                    ));
                 }
             } else {
                 o.inputs.push(PathBuf::from(arg));
@@ -72,6 +87,13 @@ impl Options {
             return Err("BD-E-INPUT: -bennett-out and at least one input required".into());
         }
         o.major()?;
+        if let Some(tier) = o.get("bennett-tier") {
+            if tier != "reversible" || o.get("bennett-entry").is_none() {
+                return Err("BD-E-INPUT: §19.2 requires --bennett-tier=reversible and --bennett-entry=SYMBOL".into());
+            }
+        } else if o.get("bennett-entry").is_some() {
+            return Err("BD-E-INPUT: --bennett-entry requires --bennett-tier=reversible".into());
+        }
         Ok(o)
     }
     fn get(&self, key: &str) -> Option<&str> {
