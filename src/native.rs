@@ -126,7 +126,7 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         }
     }
     let linked = b.out.join("comparison-linked.bc");
-    let mut bitcode_link = vec![
+    let bitcode_link = vec![
         tool(m, "llvm-link"),
         device.display().to_string(),
         runtime.display().to_string(),
@@ -135,7 +135,6 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         "-o".into(),
         linked.display().to_string(),
     ];
-    bitcode_link.splice(2..2, extras);
     b.run("comparison-bitcode-link", bitcode_link.clone(), None)?;
     audit_markers(b, m, &linked)?;
     let support = absolute(
@@ -183,18 +182,17 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         artifact(&b.out.join("resolved-layout.json"), None)?,
     );
     let adapted = b.out.join("comparison-adapted.bc");
-    b.run(
-        "comparison-support-link",
-        vec![
-            tool(m, "llvm-link"),
-            linked.display().to_string(),
-            config.display().to_string(),
-            format!("--override={}", support.display()),
-            "-o".into(),
-            adapted.display().to_string(),
-        ],
-        None,
-    )?;
+    let mut support_link = vec![tool(m, "llvm-link"), linked.display().to_string()];
+    // A harness main is a root, not a --only-needed library: startup is added
+    // here, after the initial production closure.
+    support_link.extend(extras);
+    support_link.extend([
+        config.display().to_string(),
+        format!("--override={}", support.display()),
+        "-o".into(),
+        adapted.display().to_string(),
+    ]);
+    b.run("comparison-support-link", support_link, None)?;
     let closed = b.out.join("comparison.bc");
     b.run(
         "comparison-closure-link",
@@ -230,11 +228,7 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         .collect();
     if !missing.is_empty() {
         let memory = b.out.join("native-memory.bc");
-        let mut extract = vec![
-            tool(m, "llvm-extract"),
-            runtime.display().to_string(),
-            "--recursive".into(),
-        ];
+        let mut extract = vec![tool(m, "llvm-extract"), runtime.display().to_string()];
         extract.extend(missing.iter().map(|n| format!("--func={n}")));
         extract.extend(["-o".into(), memory.display().to_string()]);
         b.run("native-memory-extract", extract, None)?;
@@ -250,6 +244,19 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
             None,
         )?;
     }
+    b.run(
+        "native-memory-closure",
+        vec![
+            tool(m, "llvm-link"),
+            closed.display().to_string(),
+            runtime.display().to_string(),
+            arith.display().to_string(),
+            "--only-needed".into(),
+            "-o".into(),
+            closed.display().to_string(),
+        ],
+        None,
+    )?;
     b.run(
         "comparison-cleanup",
         vec![
@@ -367,8 +374,14 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         results.push(record);
     }
     results.push(obj([("variant", "O0-ASan-UBSan".into()), ("status", "blocked".into()),
+        ("code","BD-E-NATIVE-SANITIZER".into()),("stage","native-sanitizer".into()),
+        ("function","<whole-program>".into()),("value_or_call","<instrumentation>".into()),
+        ("constraint","§17.7 diagnostic instrumentation must not import hosted sanitizer/libc/libm".into()),
+        ("required_change","brt-nuu.1: publish a real freestanding ASan/UBSan closure or specified adapter".into()),
         ("blocked_on",strings(&["brt-nuu.1".into()])),
         ("reason","Published native closure has no freestanding ASan/UBSan runtime; no hosted sanitizer fallback".into())]));
+    b.record
+        .set("native_comparisons", Json::Array(results.clone()));
     write(
         b.out.join("native-comparisons.json"),
         Json::Array(results).encode() + "\n",

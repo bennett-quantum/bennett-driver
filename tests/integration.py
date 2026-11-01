@@ -84,20 +84,30 @@ with tempfile.TemporaryDirectory(prefix='integration-',dir=ROOT/'.tmp') as job:
         # the driver's stricter same-materialised-module comparison. The latter
         # must not silently reuse these hosted baseline binaries.
         expected_native = (evidence/str(m)/'native.txt').read_bytes()
+        assert len(expected_native.splitlines())==10
+        for executor in ('VM-forward','reference-forward'):
+            assert (evidence/str(m)/(executor+'.txt')).read_bytes()==expected_native
         for level in ('O0','O2'):
             assert run([evidence/str(m)/f'native-{level}']) == expected_native
         native_record = out/'native-comparison.json'
         p = subprocess.run([str(EXE), f'--bennett-llvm-major={m}',
             f'--bennett-materialised={out/"device.bc"}', f'--bennett-arith={arith}',
-            f'--bennett-runtimes={runtime}',
+            f'--bennett-runtimes={WS}/bennett-runtimes/dist/llvm{m}/bennett-runtimes.bc',
             f'--bennett-native-input={fixtures/"main_golden.c"}',
             f'--bennett-comparison-record={native_record}'],capture_output=True)
         assert p.returncode != 0, 'unexpected native closure: audit then update this blocker regression'
         link = json.loads(native_record.read_text())
         assert link['materialised_sha256'] == sha(out/'device.bc')
         blockers = json.loads((out/'native-work/blockers.json').read_text())
-        assert blockers[0]['code'] == 'BD-E-NATIVE-LINK', blockers
+        assert blockers[0]['code'] == 'BD-E-NATIVE-MARKERS', blockers
         error = blockers[0]['diagnostic']
-        assert 'undefined reference' in error and any(s in error for s in ('printf','__bennett_nz_alloc','__bennett_qalloc')), error
-        print(f'LLVM {m}: driver native comparison blocked by unpublished closure; recorded O0/O2 baselines agree', flush=True)
+        assert all(s in error for s in ('__bennett_qalloc','__bennett_qfree','bp-xyn')), error
+        assert 'undefined reference to `main' not in error, error
+        assert '__bennett_qalloc' in link['residual_markers']
+        assert '__bennett_qfree' in link['residual_markers']
+        assert '__bennett_rt_native_layout' in (out/'native-work/native-layout.ll').read_text()
+        variants=json.loads((out/'native-work/native-comparisons.json').read_text())
+        assert [v['variant'] for v in variants]==['O2','O0','O0-ASan-UBSan']
+        assert variants[2]['blocked_on']==['brt-nuu.1']
+        print(f'LLVM {m}: driver native comparison blocked by residual qalloc/qfree (bp-xyn); recorded baselines agree', flush=True)
         print(f'LLVM {m}: both launch hashes agree with {evidence}', flush=True)

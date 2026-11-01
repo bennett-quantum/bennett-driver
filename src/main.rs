@@ -12,7 +12,7 @@ type Result<T> = std::result::Result<T, String>;
 const DIALECT: &str = "0.2.10";
 const ISA: &str = "0.8";
 const IDENTITY: &str = "dialect-0.2.10;isa-0.8";
-const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.10 -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8,\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n";
+const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.10 -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8,\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n Plain O2 comparison and O0 diagnostic; ASan/UBSan blocked on brt-nuu.1\n";
 #[derive(Debug)]
 struct Options {
     values: BTreeMap<String, String>,
