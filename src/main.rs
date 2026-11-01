@@ -1,4 +1,5 @@
 mod json;
+mod native;
 use json::{Json, obj, strings};
 use std::{
     collections::BTreeMap,
@@ -48,6 +49,15 @@ impl Options {
                         | "bennett-runtimes-sha256"
                         | "bennett-arith-sha256"
                         | "bennett-pipeline"
+                        | "bennett-materialised"
+                        | "bennett-comparison-record"
+                        | "bennett-comparison-output"
+                        | "bennett-sysroot"
+                        | "bennett-native-input"
+                        | "bennett-native-backend"
+                        | "bennett-layout-data-base"
+                        | "bennett-layout-text-base"
+                        | "bennett-comparison"
                 );
                 let pass = matches!(
                     key,
@@ -80,10 +90,21 @@ impl Options {
                 o.inputs.push(PathBuf::from(arg));
             }
         }
+        let adapter = o.get("bennett-materialised").is_some();
+        if adapter && o.get("bennett-dialect").is_none() {
+            o.values.insert("bennett-dialect".into(), DIALECT.into());
+        }
+        if adapter && o.get("bennett-out").is_none() {
+            let path = Path::new(o.get("bennett-materialised").unwrap())
+                .parent()
+                .unwrap_or(Path::new("."));
+            let out = path.join("native-work").display().to_string();
+            o.values.insert("bennett-out".into(), out);
+        }
         if o.get("bennett-dialect") != Some(DIALECT) || o.get("bennett-isa").unwrap_or(ISA) != ISA {
             return Err("BD-E-VERSION: required dialect 0.2.10 and ISA 0.8".into());
         }
-        if o.get("bennett-out").is_none() || o.inputs.is_empty() {
+        if o.get("bennett-out").is_none() || (o.inputs.is_empty() && !adapter) {
             return Err("BD-E-INPUT: -bennett-out and at least one input required".into());
         }
         o.major()?;
@@ -467,7 +488,17 @@ fn main() {
                 ("options", strings(&args)),
             ]),
         };
-        let r = execute(&o, &mut b);
+        let r = if o.get("bennett-materialised").is_some() {
+            native::compare(&o, &mut b)
+        } else {
+            execute(&o, &mut b).and_then(|()| {
+                if o.get("bennett-comparison") == Some("true") {
+                    native::compare(&o, &mut b)
+                } else {
+                    Ok(())
+                }
+            })
+        };
         if let Err(ref e) = r {
             b.record.set("error", e.clone().into());
             b.save("failed")?;
