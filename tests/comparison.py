@@ -1,4 +1,5 @@
-import json, pathlib, subprocess, sys, tempfile
+import hashlib, json, pathlib, subprocess, sys, tempfile
+from toolchain import flags
 root=pathlib.Path(__file__).resolve().parents[1]
 ws=root.parent
 with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='comparison-') as tmp:
@@ -9,13 +10,15 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='comparison-') as tmp:
         src=d/'main.c';src.write_text('int main(void) { return 0; }\n')
         subprocess.run([f'/usr/lib/llvm-{m}/bin/clang','-emit-llvm','-c',str(src),'-o',str(d/'device.bc')],check=True)
         record=d/'native-comparison.json'
-        p=subprocess.run([sys.argv[1],f'--bennett-llvm-major={m}',f'--bennett-materialised={d/"device.bc"}',
+        p=subprocess.run([sys.argv[1],*flags(m,plugin=False),f'--bennett-llvm-major={m}',f'--bennett-materialised={d/"device.bc"}',
             f'--bennett-comparison-record={record}',f'--bennett-comparison-output={d/"native"}'],capture_output=True)
         assert record.is_file(),p.stderr.decode()
         r=json.loads(record.read_text());a=r['link_argv']
         assert r['llvm_major']==m
         assert all(x in a for x in ('-nostdlib','-nostdinc','-static','-no-pie'))
-        assert all(str(ws/f'{lib}/dist/llvm{m}/{lib}.bc') in r['bitcode_link_argv'] for lib in ('bennett-runtimes','bennett-arith'))
+        for key in ('runtimes','arith'):
+            lib=next(pathlib.Path(x) for x in r['bitcode_link_argv'] if pathlib.Path(x).name==f'bennett-{key}.bc')
+            assert hashlib.sha256(lib.read_bytes()).hexdigest()==r[key+'_sha256']
         assert str(d/'device.bc') in r['bitcode_link_argv']
         assert not any(x in a for x in ('-lc','-lm','-shared'))
         # No supplied runtime _start: it must refuse, never return a fake

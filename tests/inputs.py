@@ -1,4 +1,5 @@
-import json,pathlib,subprocess,sys,tempfile
+import os,json,pathlib,subprocess,sys,tempfile
+from toolchain import flags
 root=pathlib.Path(__file__).resolve().parents[1]
 def run(args):
     p=subprocess.run(list(map(str,args)),capture_output=True)
@@ -23,7 +24,7 @@ define i64 @top(i64 %x) {
     run(['/usr/lib/llvm-23/bin/llvm-as',b,'-o',d/'b.bc'])
     for ext in ('ll','bc'):
         out=d/ext
-        run([sys.argv[1],'-bennett-dialect=0.2.10',f'-bennett-out={out}',d/f'a.{ext}',d/f'b.{ext}'])
+        run([sys.argv[1],*flags(23),'-bennett-dialect=0.2.10',f'-bennett-out={out}',d/f'a.{ext}',d/f'b.{ext}'])
         assert json.loads((out/'manifest.json').read_text())['llvm_major']==23
         assert any(x['entry']=='top' for x in json.loads((out/'launches.json').read_text()))
     assert (d/'ll/top/launch.bennett').read_bytes()==(d/'bc/top/launch.bennett').read_bytes()

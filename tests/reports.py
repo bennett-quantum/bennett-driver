@@ -1,4 +1,5 @@
-import json, pathlib, subprocess, sys, tempfile
+import os, json, pathlib, subprocess, sys, tempfile
+from toolchain import flags
 root=pathlib.Path(__file__).resolve().parents[1]
 ws=root.parent
 with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='reports-') as temp:
@@ -44,6 +45,8 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='reports-') as temp:
                 f=pathlib.Path(temp)/f'mixed{n}.ll'
                 f.write_text(f'target triple = "{t}"\ndefine i32 @f{n}() {{ret i32 0}}\n')
                 inputs.append(str(f))
+        keys={a.split('=',1)[0] for a in extra}
+        extra += [a for a in flags(18 if label=='newer' else 23, plugin=label!='identity') if a.split('=',1)[0] not in keys]
         p=subprocess.run([sys.argv[1],*(['-bennett-dialect=0.2.10'] if label!='version' else []),f'-bennett-out={out}',*extra,*inputs],capture_output=True)
         assert p.returncode!=0
         path=out/'blockers.json'

@@ -26,7 +26,9 @@ Override artifacts with `--bennett-plugin=FILE`, `--bennett-runtimes=FILE`,
 `dist/llvmM/<repo>.bc`. Each accepts a `--bennett-<name>-sha256=HEX` pin.
 `--bennett-pipeline=PIPELINE` overrides post-link LTO; LLVM view passes are forbidden.
 `--bennett-sysroot=DIR` supplies the C header sysroot. Budget options pass through;
-table and disk files are hashed. `--help` lists the primary options.
+table and disk files are hashed. `--bennett-analysis-budget-ms=N` explicitly
+controls the plugin's compiler wall-clock allowance (default plugin value: 30000ms).
+Integration records 300000ms for loaded local builds; execution budgets are unchanged. `--help` lists the primary options.
 
 Output must be new or empty. It contains `linked.bc`, `postlink.bc`, plugin launch
 artifacts, `manifest.json` (versions, options, hashes and full process receipts),
@@ -38,8 +40,12 @@ an earlier build. Tools required: LLVM tools, Python3 stdlib, `sha256sum` and an
 ELF linker invoked by clang. Plugin identity is queried in an isolated helper.
 
 `--bennett-tier=reversible --bennett-entry=main` reaches the real plugin. Current
-plugins refuse these options; reports distinguish that implementation gap from
-ISA-0.8 `BD-B-ISA7`/BLK-5 typed R faults. No R launch or argv reply is fabricated.
+plugins emit the R argv/console launch and report ISA-0.8 `BD-B-ISA7`/BLK-5.
+The driver verifies and retains these artifacts/build records with status `blocked`
+and a nonzero exit. Per-entry `argv-replies.json` defaults to the empty argc/argv/envp
+header; `--bennett-argv-replies=FILE` supplies a checked public-executor reply array.
+Nonempty argument storage must already be laid out by the caller; automatic packing
+remains required work. Older plugins' missing-mode refusals are recorded distinctly.
 
 For strict native links add `--bennett-comparison=true`, or use the consumer
 adapter `--bennett-materialised=DIR/device.bc --bennett-llvm-major=M`.
@@ -60,7 +66,10 @@ recover exact plugin-pinned library bytes from local Git history if dirty siblin
 publications differ. They compare all four launch hashes and recorded native
 baselines, then assert the driver's actual native-link refusal. Refusal tests
 are not native acceptance. `scripts/pre-push` runs this suite in a clean detached
-worktree of each pushed SHA. No CI and no push is performed here.
+worktree of each pushed SHA. During sibling rebuilds, `BENNETT_DRIVER_TEST_ARTIFACTS=DIR` selects an explicit
+local artifact manifest (per-major plugin path/SHA and runtimes/arith path/SHA).
+This prevents loading a `.so` while its build is rewriting it; all CLI pins are
+still verified. No CI and no push is performed here.
 
 Oracle synthesis (§19.3), placement (§19.4), complete comparison layout (§19.5),
 snapshots (§19.6), closed-unit fallback (§19.7), rlib extraction and the full

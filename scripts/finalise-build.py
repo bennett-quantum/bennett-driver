@@ -36,5 +36,13 @@ for launch in launches:
     receipt = load(d/'launch-record.json')
     rel = launch['entry']+'/certificate.json'
     receipt['artifacts'][rel] = {'bytes': (d/'certificate.json').stat().st_size, 'sha256': sha(d/'certificate.json')}
+    if any(a.lstrip('-')=='bennett-tier=reversible' for a in manifest['options']):
+        size=4+2*(records[launch['entry']]['layout']['ptr_width']//8)
+        replies=load(pathlib.Path(manifest['argv_replies']['path'])) if 'argv_replies' in manifest else [dict(service='bennett.argv',payload='00'*size,reply='00'*size)]
+        assert isinstance(replies,list) and len(replies)==1 and replies[0]['service']=='bennett.argv', 'expected one bennett.argv reply'
+        assert replies[0]['payload']=='00'*size, 'argv request payload must match zeroed header'
+        assert len(replies[0]['reply'])==2*size and len(bytes.fromhex(replies[0]['reply']))==size, 'argv reply header width mismatch'
+        save(d/'argv-replies.json',replies)
+        receipt['artifacts'][launch['entry']+'/argv-replies.json']={'bytes':(d/'argv-replies.json').stat().st_size,'sha256':sha(d/'argv-replies.json')}
     receipt['driver_build_sha256'] = digest
     save(d/'launch-record.json', receipt)

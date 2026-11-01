@@ -50,6 +50,7 @@ with tempfile.TemporaryDirectory(prefix='integration-',dir=ROOT/'.tmp') as job:
         runtime = publication('bennett-runtimes',m,runtime_digest,job)
         run([EXE, f'--bennett-llvm-major={m}', '-bennett-dialect=0.2.10', '-bennett-isa=0.8',
              f'-bennett-out={out}', '-bennett-budget-default=10000000,1048576,65536,256,65536',
+             '--bennett-analysis-budget-ms=300000',
              f'--bennett-runtimes={runtime}', f'--bennett-runtimes-sha256={runtime_digest}',
              f'--bennett-plugin={plugin}', f'--bennett-plugin-sha256={plugin_digest}',
              f'--bennett-arith={arith}', f'--bennett-arith-sha256={pins[f"llvm{m}_sha256"]}', fixtures/'hashtable_marked.c'])

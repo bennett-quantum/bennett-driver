@@ -59,10 +59,12 @@ impl Options {
                         | "bennett-layout-data-base"
                         | "bennett-layout-text-base"
                         | "bennett-comparison"
+                        | "bennett-argv-replies"
                 );
                 let pass = matches!(
                     key,
                     "bennett-budget-default"
+                        | "bennett-analysis-budget-ms"
                         | "bennett-budgets"
                         | "bennett-tier"
                         | "bennett-entry"
@@ -137,6 +139,9 @@ impl Options {
             })
         {
             return Err("BD-E-INPUT: comparison options require --bennett-comparison=true or --bennett-materialised".into());
+        }
+        if o.get("bennett-argv-replies").is_some() && o.get("bennett-tier") != Some("reversible") {
+            return Err("BD-E-INPUT: argv replies require --bennett-tier=reversible".into());
         }
         if let Some(tier) = o.get("bennett-tier") {
             if tier != "reversible" || o.get("bennett-entry").is_none() {
@@ -359,6 +364,10 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
         b.record
             .set("budget_input", artifact(&absolute(file)?, None)?);
     }
+    if let Some(file) = o.get("bennett-argv-replies") {
+        b.record
+            .set("argv_replies", artifact(&absolute(file)?, None)?);
+    }
     if let Some(file) = o.get("bennett-disk") {
         b.record.set("disk", artifact(&absolute(file)?, None)?);
     }
@@ -466,7 +475,11 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
     ];
     pass.extend(o.plugin_args.clone());
     pass.extend(["-disable-output".into(), post.display().to_string()]);
-    b.run("plugin", pass, Some(&arith))?;
+    let blocked = match b.run("plugin", pass, Some(&arith)) {
+        Ok(_) => None,
+        Err(e) if e.contains("BD-B-") => Some(e),
+        Err(e) => return Err(e),
+    };
     for name in ["device.bc", "host.bc", "launches.json"] {
         if !b.out.join(name).is_file() {
             return Err(format!(
@@ -495,7 +508,14 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
             ("host", artifact(&b.out.join("host.bc"), None)?),
         ]),
     );
-    b.save("complete")?;
+    if let Some(ref e) = blocked {
+        b.record.set("error", e.clone().into());
+    }
+    b.save(if blocked.is_some() {
+        "blocked"
+    } else {
+        "complete"
+    })?;
     let mut c = Command::new("python3");
     c.arg("-c")
         .arg(include_str!("../scripts/finalise-build.py"))
@@ -507,6 +527,9 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
             "build-record: {}",
             String::from_utf8_lossy(&result.stderr)
         ));
+    }
+    if let Some(e) = blocked {
+        return Err(e);
     }
     Ok(())
 }
@@ -563,7 +586,11 @@ fn main() {
         };
         if let Err(ref e) = r {
             b.record.set("error", e.clone().into());
-            b.save("failed")?;
+            b.save(if e.contains("BD-B-") {
+                "blocked"
+            } else {
+                "failed"
+            })?;
             let stage = b
                 .commands
                 .last()
@@ -579,7 +606,16 @@ fn main() {
                     }
                 })
                 .unwrap_or("input");
-            report::failure(Some(&b.out), e, stage, &args)?;
+            report::failure(
+                Some(&b.out),
+                e,
+                if e.starts_with("plugin:") {
+                    "plugin"
+                } else {
+                    stage
+                },
+                &args,
+            )?;
             report_written = true;
         }
         r
@@ -610,7 +646,30 @@ mod tests {
     #[test]
     fn unknown_and_duplicate_options_fail() {
         assert!(parse(&["--ignored=yes"]).is_err());
+        assert!(
+            parse(&[
+                "-bennett-dialect=0.2.10",
+                "-bennett-out=o",
+                "--bennett-argv-replies=replies.json",
+                "x.bc"
+            ])
+            .is_err()
+        );
         assert!(parse(&["-bennett-dialect=0.2.10", "-bennett-dialect=0.2.10"]).is_err());
+    }
+    #[test]
+    fn analysis_wall_clock_allowance_is_explicit_and_forwarded() {
+        let o = parse(&[
+            "-bennett-dialect=0.2.10",
+            "-bennett-out=o",
+            "--bennett-analysis-budget-ms=300000",
+            "x.bc",
+        ])
+        .unwrap();
+        assert!(
+            o.plugin_args
+                .contains(&"-bennett-analysis-budget-ms=300000".to_string())
+        );
     }
     #[test]
     fn defaults_choose_newest_envelope() {
