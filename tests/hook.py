@@ -6,6 +6,7 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='hook-') as temp:
     git('init','-q');git('config','user.name','Gate Test');git('config','user.email','test@example.invalid')
     shutil.copy(root/'scripts/pre-push',repo/'scripts/pre-push')
     (repo/'Cargo.toml').write_text('committed')
+    (repo/'.gitignore').write_text('.tmp/\n')
     git('add','.');git('commit','-qm','fixture');sha=git('rev-parse','HEAD')
     (repo/'Cargo.toml').write_text('dirty')
     bin=d/'bin';bin.mkdir();stub=bin/'cargo'

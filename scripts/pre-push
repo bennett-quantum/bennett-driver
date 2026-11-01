@@ -28,6 +28,7 @@ for sha in "${shas[@]}"; do
   cleanup() { git -C "$root" worktree remove --force "$wt" >/dev/null 2>&1 || true; }
   trap cleanup EXIT
   git -C "$root" worktree add --detach "$wt" "$sha" >/dev/null
+  mkdir -p "$wt/.tmp"
   echo "pre-push: cargo unit/contract and LLVM18/23 integration for $sha in $wt" >&2
   env TMPDIR="$root/.tmp" CARGO_TARGET_DIR="$root/.tmp/gate-target" \
     cargo test --offline --manifest-path "$wt/Cargo.toml" -- --nocapture
