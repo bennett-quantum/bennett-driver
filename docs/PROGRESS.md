@@ -25,7 +25,8 @@
 - §25 structured reports list exact residual symbols and separate implementation
   and ISA blockers. **cyg.2/3 and cyg stay blocked**, no capability waived.
 - Verification: 11 Rust tests, both-major native adapter and real-corpus blocker
-  regressions, clippy -D warnings, formatting; detached clean pre-push gate.
+  regressions, clippy -D warnings, formatting; detached clean pre-push gate
+  **PASS at ac342d7** (`.tmp/native-clean-pre-push.log`), unchanged gate script.
   Persistent fresh-plugin receipts: `.tmp/native-probes-20261101T142910Z`
   (plugin code e1f797e). Frozen evidence plugin remains separate.
 
