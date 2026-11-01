@@ -15,7 +15,17 @@ def run(args):
 def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
 def publication(repo,m,digest,job):
     relative=f'dist/llvm{m}/{repo}.bc'
-    blob=(WS/repo/relative).read_bytes()
+    # A runner that forbids Git can supply immutable published artifacts.
+    # Require the exact evidence digest; this never changes expected launches.
+    directory=os.environ.get('BENNETT_DRIVER_TEST_PUBLICATIONS')
+    if directory:
+        key={'bennett-runtimes':'runtimes','bennett-arith':'arith'}[repo]
+        pin=json.loads((pathlib.Path(directory)/'manifest.json').read_text())[str(m)][key]
+        assert pin['sha256']==digest, f'Explicit {repo} LLVM{m} pin differs from evidence'
+        blob=pathlib.Path(pin['path']).read_bytes()
+        assert hashlib.sha256(blob).hexdigest()==digest, f'Explicit publication changed: {pin["path"]}'
+    else:
+        blob=(WS/repo/relative).read_bytes()
     if hashlib.sha256(blob).hexdigest()!=digest:
         for rev in run(['git','-C',WS/repo,'log','--all','--format=%H','--',relative]).decode().split():
             candidate=run(['git','-C',WS/repo,'show',f'{rev}:{relative}'])
@@ -107,7 +117,7 @@ with tempfile.TemporaryDirectory(prefix='integration-',dir=ROOT/'.tmp') as job:
         assert '__bennett_qfree' in link['residual_markers']
         assert '__bennett_rt_native_layout' in (out/'native-work/native-layout.ll').read_text()
         variants=json.loads((out/'native-work/native-comparisons.json').read_text())
-        assert [v['variant'] for v in variants]==['O2','O0','O0-ASan-UBSan']
-        assert variants[2]['blocked_on']==['brt-nuu.1']
+        assert [v['variant'] for v in variants]==['O2','O0','O0-ASan']
+        assert variants[2]['blocked_on']==['brt-nuu.2']
         print(f'LLVM {m}: driver native comparison blocked by residual qalloc/qfree (bp-xyn); recorded baselines agree', flush=True)
         print(f'LLVM {m}: both launch hashes agree with {evidence}', flush=True)

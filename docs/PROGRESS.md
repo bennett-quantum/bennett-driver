@@ -1,68 +1,24 @@
-# Native comparison — 2026-11-01 (M1 incomplete; no push)
+## Resume
 
-- §17.7/19.5 published support integration: both-major plain O0/O2 adapter
-  diagnostics link and execute strict static binaries with no undefined imports
-  or ELF interpreter. Harness main is retained before final runtime closure;
-  codegen ABI memory definitions come from published runtimes, preserving any
-  already materialised definitions. No host libc/libm or full-native overwrite.
-- Emit `__bennett_rt_native_layout = {1, heap_base, heap_limit_max}`, align8,
-  from the actual resolved launch layout (or explicit consumer layout JSON).
-  Never reinterpret `__bennett_rt_blk.<f>`. Native data-end/heap equality and
-  disjoint text range are checked; missing mapping is an explicit blocker.
-- **Actual hashtable LLVM18/23: native ten cases blocked**, exact residual
-  `__bennett_qalloc`, `__bennett_qfree` (**bp-xyn**). All four launch hashes
-  still agree with rung-2 evidence `20261101T130556.518962Z`; its ten hosted
-  native/VM/reference results agree. No driver-native results substituted.
-- **Actual hello LLVM18:** N21/N27 `llvm.fshl.v4i32` (**bp-ozp**) before
-  device emission. **LLVM23:** real R output + **BD-B-ISA7** (**bp-is0**);
-  actual device retains `__bennett_effect_console_write` (**bp-xyn**).
-- Shared comparison layout remains **cyg.3 / bp-xyn**: rung-2 heap4096 cannot
-  follow native startup/musl/harness/table data; hello lacks LLVM ↔ ISA global
-  symbol map. Global/function/arena/interface layout replication remains required.
-- ASan/UBSan diagnostic row explicitly **blocked on brt-nuu.1**. Plain O0 is
-  distinct from the optimised §17.7 comparison. No sanitizer instrumentation
-  silently disabled and called a sanitizer pass.
-- §25 structured reports list exact residual symbols and separate implementation
-  and ISA blockers. **cyg.2/3 and cyg stay blocked**, no capability waived.
-- Verification: 11 Rust tests, both-major native adapter and real-corpus blocker
-  regressions, clippy -D warnings, formatting; detached clean pre-push gate
-  **PASS at ac342d7** (`.tmp/native-clean-pre-push.log`), unchanged gate script.
-  Persistent fresh-plugin receipts: `.tmp/native-probes-20261101T142910Z`
-  (plugin code e1f797e). Frozen evidence plugin remains separate.
+Native comparison links the actual materialised module with published runtimes and arithmetic, comparison-only native support and the resolved ABI-v1 layout table. Plain O2 comparison and O0 diagnostic links remain distinct from source definedness classifiers. Materialised input bytes and production region identity are unchanged.
 
-# Earlier M1 handoff — superseded by the native comparison block above
+The driver now checks scalar signed/unsigned division and remainder before native optimisation, preserving fault 5 for zero divisors and fault 6 for signed minimum/-1. Reached unreachable/trap paths call fault 4. Exact explicit runtime fault codes and double-free faults are tested. `native-detection.json` states that general load/store/range and use-after-free detection remain incomplete (`brt-2qs`); it never claims UBSan supplies these checks.
 
-- §19.1/19.9 full-LTO pipeline: green on LLVM18/23. All four rung-2 launch
-  byte hashes agree with latest evidence `20261101T130556.518962Z`. Real plugin
-  ABI identity, optional pins, module flags, canonical build/certificate records.
-- §19.2: mode/entry forwarding; live plugin now emits R argv/console launches on
-  both majors with **BD-B-ISA7 / BLK-5**. Driver verifies blocked outputs, finalises
-  metadata and emits empty argv/envp header replies (or checks supplied replies).
-  No ISA upgrade. Nonempty argument packing/storage and full R acceptance remain
-  outstanding; **bp-xkg** has the upstream history, and cyg.2 stays blocked.
-- §17.7/19.5: strict actual-materialised comparison adapter (historical missing-closure state) and O0+ASan/UBSan/O2
-  link attempts; **no driver-produced native result yet**. Runtime/musl/startup/
-  primitive/sanitizer closure **brt-nuu**, materialisation/layout **bp-xyn**,
-  conformance adapter **bennett-conformance-7n6**. Recorded hosted native O0/O2
-  baselines agree; they are not reused as driver output.
-- §25: structured JSON and line reports preserve exact errors and distinguish
-  implementation refusals from normative ISA dependencies. Unsupported options,
-  bad SHA/identity/module flag, mixed targets, unreadable newer IR and defined
-  markers are tested. No host libc/libm fallback and no plugin skipping.
-- Detached pre-push gate tests committed pushed SHA, headless, offline, including
-  real two-major integration (exact evidence-pinned plugin/library bytes). Dirty checkout isolation and cleanup are tested.
+`--bennett-classifier-input=FILE` builds an original-C O0 UBSan-minimal diagnostic with the actual matching-major published compiler-rt archive, runtime and sanitizer support. Original C inputs in a combined production/comparison invocation are collected automatically; an adapter with no original input records its classifier as blocked. Classifiers have independent resolved diagnostic layouts, source hashes, commands and `native-classifiers.json` coverage. Their outputs are not native/device agreement. Actual array-overrun diagnostics execute on both majors. Full ASan remains blocked on `brt-nuu.2`.
 
-Red receipts: original stub accepted wrong version and emitted no module;
-mode flags rejected before plugin; comparison adapter absent; errors lacked
-reports; old hook tested dirty checkout. All corresponding regressions now pass.
+Arithmetic instance integration uses the 0.2.12 §13.1 request schema without claiming a wholesale dialect/ISA compatibility upgrade: accepted plugin identity remains dialect0.2.10/ISA0.8. The driver collects sorted, deduplicated powi/conversion instances from verified LLVM IR, invokes the documented offline generator, verifies request/bitcode hashes, target fields and literal LLVM export types, and builds the effective arithmetic library before normalisation. Generator path/hash overrides are `--bennett-arith-generator` and `--bennett-arith-generator-sha256`.
 
-Slices: cyg.1 closed; cyg.2 and cyg.3 blocked, not force-closed; cyg.4 covers
-reports/gate. Umbrella cyg remains open. §19.3/4/6/7 and remaining full §19.8/9
-mechanics are deferred implementation obligations, not waived capabilities.
-Both live and frozen LLVM23 plugin hit §5.2 analysis guards under loaded builds,
-filed as **bp-xv0**. Source inspection identifies a 30000ms compiler wall-clock
-allowance. Integration now explicitly records 300000ms via the driver option;
-execution budgets, corpus and exact expected object hashes are unchanged.
-Default 30000ms acceptance under load is not claimed.
-Arith dirty publications differ from plugin pins: tests extract exact matching
-local Git blobs into driver .tmp and never change sibling code or pins.
+**The arithmetic acceptance test is RED.** Real generated f32 i7/i193 plain/_rm definitions pass manifest/type validation, but strict native linking finds the required `__bennett_rt_fenv` missing from both current runtime publications. Producer `brt-zct.1` owns the `{i32,i32}`, align4, initial-zero state. Local blocker `bennett-driver-4wi` blocks `bennett-driver-q4d`. The arithmetic diagnostic fixture also reports an unresolved native data-end/heap mismatch. Do not add a fake state object, relax the linker assertion, remove the test or claim numerical acceptance. Per COMMON.md rule8, implementation stops at this external prerequisite.
+
+Verification receipts:
+
+- `timeout 240 cargo test --offline -j4 --test native_faults -- --nocapture --test-threads=4`: PASS, 36 exact fault outcomes across LLVM18/23 O0/O2 (before the later arithmetic hook; final regression rerun recorded in job progress).
+- `BENNETT_DRIVER_TEST_ARTIFACTS=.tmp/native-probes-20261101T142910Z timeout 420 cargo test --offline -j4 --test reports --test inputs --test reversible --test classifier --test comparison -- --nocapture --test-threads=4`: PASS, five tests; actual R/musl blockers retained.
+- `BENNETT_DRIVER_TEST_PUBLICATIONS=.tmp/sol-driver-queue/publications timeout 420 cargo test --offline -j4 --test pipeline -- --nocapture --test-threads=4`: PASS, two tests, four frozen launch hashes equal; recorded ten-case native/VM/reference observations agree, actual driver-native residual qalloc/qfree blockers remain. Explicit immutable publications avoid invoking Git for recovery.
+- `timeout 360 cargo test --offline -j4 --test arith_instances -- --nocapture --test-threads=4`: FAIL at real native linking (missing runtime fenv; diagnostic layout mismatch). No real instance execution or tamper-regression pass claimed.
+- `timeout 120 cargo test --offline -j4 --bin bennett-driver -- --test-threads=4`: PASS, four unit tests.
+- `timeout 120 cargo clippy --offline -j4 --all-targets -- -D warnings`: PASS after arithmetic integration.
+
+Open: cyg.3 native corpus/shared layout (`bp-xyn`), materialised memory checks (`brt-2qs`), full ASan (`brt-nuu.2`); cyg.2 ISA0.8 typed R fault boundary and nonempty argv/process context; i0v complete memory coverage; q4d real production/native arithmetic acceptance (`4wi` / `brt-zct.1`). Existing LLVM18 hello vector materialisation (`bp-ozp`) and LLVM23 R ISA7/console marker evidence remain separate. No bead was closed prematurely.
+
+Runner must commit the owned files and run the detached `scripts/pre-push` gate; that script invokes Git and was not run under this job protocol. The rung-3 consumer was read only, never edited or run. No Git command was run by this job.

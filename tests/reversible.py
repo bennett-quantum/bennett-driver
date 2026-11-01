@@ -60,5 +60,5 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='rung3-') as temp:
             assert '__bennett_effect_console_write' in r[0]['diagnostic'],r
             variants=json.loads((native/'native-comparisons.json').read_text())
             assert variants[0]['residual_markers']==['__bennett_effect_console_write'],variants
-            assert variants[2]['blocked_on']==['brt-nuu.1'],variants
+            assert variants[2]['blocked_on']==['brt-nuu.2'],variants
             print('LLVM23 real hello: R BD-B-ISA7; native console marker bp-xyn')

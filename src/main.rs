@@ -1,3 +1,5 @@
+mod arith;
+mod classifier;
 mod json;
 mod native;
 mod report;
@@ -12,7 +14,7 @@ type Result<T> = std::result::Result<T, String>;
 const DIALECT: &str = "0.2.10";
 const ISA: &str = "0.8";
 const IDENTITY: &str = "dialect-0.2.10;isa-0.8";
-const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.10 -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8,\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n Plain O2 comparison and O0 diagnostic; ASan/UBSan blocked on brt-nuu.1\n";
+const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.10 -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8,\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n --bennett-classifier-input=FILE (original C, UBSan-minimal diagnostic)\n Plain O2 comparison and O0 diagnostic; full ASan blocked on brt-nuu.2\n";
 #[derive(Debug)]
 struct Options {
     values: BTreeMap<String, String>,
@@ -49,6 +51,8 @@ impl Options {
                         | "bennett-plugin-sha256"
                         | "bennett-runtimes-sha256"
                         | "bennett-arith-sha256"
+                        | "bennett-arith-generator"
+                        | "bennett-arith-generator-sha256"
                         | "bennett-pipeline"
                         | "bennett-materialised"
                         | "bennett-comparison-record"
@@ -58,6 +62,7 @@ impl Options {
                         | "bennett-native-backend"
                         | "bennett-native-support"
                         | "bennett-native-support-sha256"
+                        | "bennett-classifier-input"
                         | "bennett-comparison-layout"
                         | "bennett-layout-data-base"
                         | "bennett-layout-text-base"
@@ -136,6 +141,7 @@ impl Options {
                         | "bennett-native-backend"
                         | "bennett-native-support"
                         | "bennett-native-support-sha256"
+                        | "bennett-classifier-input"
                         | "bennett-comparison-layout"
                         | "bennett-comparison-record"
                         | "bennett-comparison-output"
@@ -379,6 +385,7 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
     }
     let mut inputs = vec![];
     let mut modules = vec![];
+    let mut input_ir = vec![];
     let mut layout = None;
     let mut triple = None;
     for (i, p) in o.inputs.iter().enumerate() {
@@ -430,6 +437,7 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
             )
         })?;
         let text = read(&ir)?;
+        input_ir.push(ir);
         for (key, previous) in [
             ("target datalayout", &mut layout),
             ("target triple", &mut triple),
@@ -447,6 +455,7 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
         modules.push(module.display().to_string());
     }
     b.record.set("inputs", Json::Array(inputs));
+    let arith = arith::prepare(o, b, m, &arith, &input_ir)?;
     let linked = b.out.join("linked.bc");
     let post = b.out.join("postlink.bc");
     let mut link = vec![tool(m, "llvm-link")];
@@ -459,6 +468,20 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
         linked.display().to_string(),
     ]);
     b.run("runtime-link", link, None)?;
+    let instances = b.out.join("arith-instances/bennett-arith.bc");
+    if instances.is_file() {
+        b.run(
+            "arith-instance-roots",
+            vec![
+                tool(m, "llvm-link"),
+                linked.display().to_string(),
+                format!("--override={}", instances.display()),
+                "-o".into(),
+                linked.display().to_string(),
+            ],
+            None,
+        )?;
+    }
     let pipeline = o.get("bennett-pipeline").unwrap_or("lto<O3>");
     b.run(
         "postlink",

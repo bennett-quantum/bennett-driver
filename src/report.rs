@@ -42,7 +42,7 @@ pub fn failure(out: Option<&Path>, error: &str, stage: &str, args: &[String]) ->
     } else if error.contains("native") || error.contains("comparison") {
         (
             "§17.7/19.5: comparison must resolve the materialised module with runtimes/arith and no host libc/libm",
-            "Inspect the exact native imports/link diagnostics and resolved device layout; bp-xyn / bennett-driver-cyg.3. ASan/UBSan closure remains brt-nuu.1",
+            "Inspect the exact native imports/link diagnostics and resolved device layout; bp-xyn / bennett-driver-cyg.3. Full ASan/general-memory detection remains brt-nuu.2; UBSan source diagnostics are separate",
         )
     } else {
         (

@@ -91,6 +91,21 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         ],
         None,
     )?;
+    let input_ir = b.out.join("arith-input.ll");
+    b.run(
+        "comparison-arith-input",
+        vec![
+            tool(m, "opt"),
+            "-passes=verify".into(),
+            "-S".into(),
+            device.display().to_string(),
+            "-o".into(),
+            input_ir.display().to_string(),
+        ],
+        None,
+    )?;
+    let base_arith_sha = sha(&arith)?;
+    let arith = arith::prepare(o, b, m, &arith, &[input_ir])?;
     let mut extras = vec![];
     // Explicit comparison-only support, never linked into the production module.
     for key in ["bennett-native-input", "bennett-native-backend"] {
@@ -137,6 +152,45 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
     ];
     b.run("comparison-bitcode-link", bitcode_link.clone(), None)?;
     audit_markers(b, m, &linked)?;
+    let checked = b.out.join("comparison-checked.bc");
+    let check_ir = b.out.join("comparison-linked.ll");
+    let checked_ir = b.out.join("comparison-checked.ll");
+    b.run(
+        "comparison-check-input",
+        vec![
+            tool(m, "llvm-dis"),
+            linked.display().to_string(),
+            "-o".into(),
+            check_ir.display().to_string(),
+        ],
+        None,
+    )?;
+    b.run(
+        "comparison-checks",
+        vec![
+            "python3".into(),
+            "-c".into(),
+            include_str!("../scripts/native-checks.py").into(),
+            check_ir.display().to_string(),
+            checked_ir.display().to_string(),
+            b.out.join("native-detection.json").display().to_string(),
+        ],
+        None,
+    )?;
+    b.run(
+        "comparison-check-assemble",
+        vec![
+            tool(m, "llvm-as"),
+            checked_ir.display().to_string(),
+            "-o".into(),
+            checked.display().to_string(),
+        ],
+        None,
+    )?;
+    b.record.set(
+        "native_detection",
+        artifact(&b.out.join("native-detection.json"), None)?,
+    );
     let support = absolute(
         o.get("bennett-native-support")
             .map(PathBuf::from)
@@ -182,7 +236,7 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         artifact(&b.out.join("resolved-layout.json"), None)?,
     );
     let adapted = b.out.join("comparison-adapted.bc");
-    let mut support_link = vec![tool(m, "llvm-link"), linked.display().to_string()];
+    let mut support_link = vec![tool(m, "llvm-link"), checked.display().to_string()];
     // A harness main is a root, not a --only-needed library: startup is added
     // here, after the initial production closure.
     support_link.extend(extras);
@@ -334,6 +388,7 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
             ("linked_sha256", sha(&closed)?.into()),
             ("runtimes_sha256", sha(&runtime)?.into()),
             ("arith_sha256", sha(&arith)?.into()),
+            ("base_arith_sha256", base_arith_sha.clone().into()),
             ("status", "planned".into()),
         ]);
         if level == "O2" {
@@ -373,13 +428,13 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         }
         results.push(record);
     }
-    results.push(obj([("variant", "O0-ASan-UBSan".into()), ("status", "blocked".into()),
+    results.push(obj([("variant", "O0-ASan".into()), ("status", "blocked".into()),
         ("code","BD-E-NATIVE-SANITIZER".into()),("stage","native-sanitizer".into()),
         ("function","<whole-program>".into()),("value_or_call","<instrumentation>".into()),
         ("constraint","§17.7 diagnostic instrumentation must not import hosted sanitizer/libc/libm".into()),
-        ("required_change","brt-nuu.1: publish a real freestanding ASan/UBSan closure or specified adapter".into()),
-        ("blocked_on",strings(&["brt-nuu.1".into()])),
-        ("reason","Published native closure has no freestanding ASan/UBSan runtime; no hosted sanitizer fallback".into())]));
+        ("required_change","brt-nuu.2: publish a real freestanding ASan closure or specified checked memory adapter".into()),
+        ("blocked_on",strings(&["brt-nuu.2".into()])),
+        ("reason","Published UBSan-minimal source classifier is separate; general memory detection remains required".into())]));
     b.record
         .set("native_comparisons", Json::Array(results.clone()));
     write(
@@ -395,8 +450,9 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
     }
     if let Some(e) = first_error {
         return Err(format!(
-            "BD-E-NATIVE-LINK: §17.7/§19.5 strict comparison cannot link; no host libc/libm fallback. See native link diagnostics; sanitizer row separately blocked on brt-nuu.1. {e}"
+            "BD-E-NATIVE-LINK: §17.7/§19.5 strict comparison cannot link; no host libc/libm fallback. See native link diagnostics; sanitizer row separately blocked on brt-nuu.2. {e}"
         ));
     }
-    b.save("complete")
+    classifier::build(o, b, m, &arith)?;
+    b.save("linked")
 }
