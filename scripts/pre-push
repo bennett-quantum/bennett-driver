@@ -1,4 +1,36 @@
 #!/usr/bin/env bash
+# Local gate: cargo test includes tests/pipeline.rs (the two-major integration).
+# Test the pushed commit in a clean detached sibling, never the dirty checkout.
 set -euo pipefail
-cd "$(git rev-parse --show-toplevel)"
-cargo test
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS BROWSER
+script_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+root="$(git -C "$script_dir/.." rev-parse --show-toplevel 2>/dev/null || git rev-parse --show-toplevel)"
+shas=()
+if [ ! -t 0 ]; then
+  while read -r -t 10 _ref sha _rref _rsha; do
+    case "$sha" in ''|*[!0-9a-f]*|0000000000000000000000000000000000000000) continue;; esac
+    shas+=("$sha")
+  done || true
+fi
+if [ "${#shas[@]}" -eq 0 ]; then
+  # A hook invocation containing only deleted refs needs no build.
+  if [ "$#" -gt 0 ]; then exit 0; fi
+  shas=("$(git -C "$root" rev-parse HEAD)")
+fi
+declare -A seen=()
+mkdir -p "$root/.tmp/gate-target"
+for sha in "${shas[@]}"; do
+  sha="$(git -C "$root" rev-parse --verify "${sha}^{commit}")"
+  [ -n "${seen[$sha]:-}" ] && continue
+  seen[$sha]=1
+  wt="$(mktemp -d "$(dirname "$root")/$(basename "$root")-gate-${sha:0:12}-XXXXXXXX")"
+  rmdir "$wt"
+  cleanup() { git -C "$root" worktree remove --force "$wt" >/dev/null 2>&1 || true; }
+  trap cleanup EXIT
+  git -C "$root" worktree add --detach "$wt" "$sha" >/dev/null
+  echo "pre-push: cargo unit/contract and LLVM18/23 integration for $sha in $wt" >&2
+  env TMPDIR="$root/.tmp" CARGO_TARGET_DIR="$root/.tmp/gate-target" \
+    cargo test --offline --manifest-path "$wt/Cargo.toml" -- --nocapture
+  cleanup
+  trap - EXIT
+done

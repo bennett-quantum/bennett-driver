@@ -14,6 +14,9 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='rung3-') as temp:
         assert plugin and '--bennett-tier=reversible' in plugin[0]['argv']
         assert '--bennett-entry=main' in plugin[0]['argv']
         if p.returncode:
+            reports=json.loads((out/'blockers.json').read_text())
+            assert reports[0]['code']=='DRIVER-PLUGIN-REFUSAL', reports
+            assert reports[1]['code']=='BD-B-ISA7', reports
             assert 'Unknown command line argument' in record['error'] or 'BLK-5' in record['error'] or 'BD-B-ISA7' in record['error'], record['error']
             print(f'LLVM {m}: real plugin refused R mode: {record["error"][:300]}')
         else:

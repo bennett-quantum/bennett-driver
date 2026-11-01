@@ -15,8 +15,8 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='comparison-') as tmp:
         r=json.loads(record.read_text());a=r['link_argv']
         assert r['llvm_major']==m
         assert all(x in a for x in ('-nostdlib','-nostdinc','-static','-no-pie'))
-        assert all(str(ws/f'{lib}/dist/llvm{m}/{lib}.bc') in a for lib in ('bennett-runtimes','bennett-arith'))
-        assert str(d/'device.bc') in a
+        assert all(str(ws/f'{lib}/dist/llvm{m}/{lib}.bc') in r['bitcode_link_argv'] for lib in ('bennett-runtimes','bennett-arith'))
+        assert str(d/'device.bc') in r['bitcode_link_argv']
         assert not any(x in a for x in ('-lc','-lm','-shared'))
         # No supplied runtime _start: it must refuse, never return a fake
         # successful binary with ld's default (incorrect) entry address.

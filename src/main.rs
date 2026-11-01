@@ -1,5 +1,6 @@
 mod json;
 mod native;
+mod report;
 use json::{Json, obj, strings};
 use std::{
     collections::BTreeMap,
@@ -72,7 +73,10 @@ impl Options {
                         "BD-E-INPUT: unimplemented driver option {arg}; capability remains required by dialect §19"
                     ));
                 }
-                if value.is_empty() || o.values.insert(key.into(), value.into()).is_some() {
+                if value.is_empty() {
+                    return Err(format!("BD-E-INPUT: empty option {key}"));
+                }
+                if o.values.insert(key.into(), value.into()).is_some() {
                     return Err(format!("BD-E-INPUT: empty or duplicate option {key}"));
                 }
                 if pass {
@@ -108,6 +112,32 @@ impl Options {
             return Err("BD-E-INPUT: -bennett-out and at least one input required".into());
         }
         o.major()?;
+        if let Some(value) = o.get("bennett-comparison")
+            && !matches!(value, "true" | "false")
+        {
+            return Err("BD-E-INPUT: --bennett-comparison=true|false required".into());
+        }
+        if o.get("bennett-pipeline")
+            .is_some_and(|p| p.contains("view-"))
+        {
+            return Err("BD-E-INPUT: LLVM view-* is forbidden in headless mode".into());
+        }
+        if !adapter
+            && o.get("bennett-comparison") != Some("true")
+            && o.values.keys().any(|k| {
+                matches!(
+                    k.as_str(),
+                    "bennett-native-input"
+                        | "bennett-native-backend"
+                        | "bennett-comparison-record"
+                        | "bennett-comparison-output"
+                        | "bennett-layout-data-base"
+                        | "bennett-layout-text-base"
+                )
+            })
+        {
+            return Err("BD-E-INPUT: comparison options require --bennett-comparison=true or --bennett-materialised".into());
+        }
         if let Some(tier) = o.get("bennett-tier") {
             if tier != "reversible" || o.get("bennett-entry").is_none() {
                 return Err("BD-E-INPUT: §19.2 requires --bennett-tier=reversible and --bennett-entry=SYMBOL".into());
@@ -153,7 +183,13 @@ fn headless(cmd: &mut Command) {
     ] {
         cmd.env_remove(key);
     }
-    cmd.env("TMPDIR", Path::new(env!("CARGO_MANIFEST_DIR")).join(".tmp"));
+    cmd.env(
+        "TMPDIR",
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("bennett-driver/.tmp"),
+    );
 }
 fn sha(path: &Path) -> Result<String> {
     let mut c = Command::new("sha256sum");
@@ -239,6 +275,20 @@ impl Build {
         Ok(stdout)
     }
 }
+fn sysroot_flags(o: &Options) -> Result<Vec<String>> {
+    match o.get("bennett-sysroot") {
+        None => Ok(vec![]),
+        Some(p) => {
+            let p = absolute(p)?;
+            Ok(vec![
+                format!("--sysroot={}", p.display()),
+                "-nostdinc".into(),
+                "-isystem".into(),
+                p.join("include").display().to_string(),
+            ])
+        }
+    }
+}
 fn tool(major: u32, name: &str) -> String {
     format!("/usr/lib/llvm-{major}/bin/{name}")
 }
@@ -305,6 +355,13 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
         versions.push((name, v.into()));
     }
     b.record.set("tools", obj(versions));
+    if let Some(file) = o.get("bennett-budgets") {
+        b.record
+            .set("budget_input", artifact(&absolute(file)?, None)?);
+    }
+    if let Some(file) = o.get("bennett-disk") {
+        b.record.set("disk", artifact(&absolute(file)?, None)?);
+    }
     let mut inputs = vec![];
     let mut modules = vec![];
     let mut layout = None;
@@ -316,20 +373,18 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
         let module = match ext {
             "c" => {
                 let out = b.out.join(format!("input-{i}.bc"));
-                b.run(
-                    "frontend",
-                    vec![
-                        tool(m, "clang"),
-                        "-O2".into(),
-                        "-flto".into(),
-                        "-emit-llvm".into(),
-                        "-c".into(),
-                        p.display().to_string(),
-                        "-o".into(),
-                        out.display().to_string(),
-                    ],
-                    None,
-                )?;
+                let mut frontend = vec![
+                    tool(m, "clang"),
+                    "-O2".into(),
+                    "-flto".into(),
+                    "-emit-llvm".into(),
+                    "-c".into(),
+                    p.display().to_string(),
+                    "-o".into(),
+                    out.display().to_string(),
+                ];
+                frontend.extend(sysroot_flags(o)?);
+                b.run("frontend", frontend, None)?;
                 out
             }
             "bc" | "ll" => p,
@@ -352,7 +407,13 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
                 ir.display().to_string(),
             ],
             None,
-        )?;
+        )
+        .map_err(|e| {
+            format!(
+                "BD-E-VERSION: LLVM {m} cannot read/verify {}: {e}",
+                module.display()
+            )
+        })?;
         let text = read(&ir)?;
         for (key, previous) in [
             ("target datalayout", &mut layout),
@@ -459,6 +520,7 @@ fn main() {
         println!("bennett-driver {}", env!("CARGO_PKG_VERSION"));
         return;
     }
+    let mut report_written = false;
     let result = (|| -> Result<()> {
         fs::create_dir_all(Path::new(env!("CARGO_MANIFEST_DIR")).join(".tmp"))
             .map_err(|e| e.to_string())?;
@@ -502,10 +564,39 @@ fn main() {
         if let Err(ref e) = r {
             b.record.set("error", e.clone().into());
             b.save("failed")?;
+            let stage = b
+                .commands
+                .last()
+                .and_then(|v| {
+                    if let Json::Object(m) = v {
+                        if let Some(Json::Str(s)) = m.get("stage") {
+                            Some(s.as_str())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or("input");
+            report::failure(Some(&b.out), e, stage, &args)?;
+            report_written = true;
         }
         r
     })();
     if let Err(e) = result {
+        if !report_written {
+            // Never overwrite an earlier build's evidence for a stale directory.
+            let hint = args
+                .iter()
+                .find_map(|a| a.trim_start_matches('-').strip_prefix("bennett-out="));
+            let out = hint
+                .and_then(|s| absolute(s).ok())
+                .filter(|p| !p.exists() || fs::read_dir(p).is_ok_and(|mut d| d.next().is_none()));
+            if let Err(r) = report::failure(out.as_deref(), &e, "arguments", &args) {
+                eprintln!("report failure: {r}");
+            }
+        }
         eprintln!("bennett-driver: {e}");
         std::process::exit(1);
     }

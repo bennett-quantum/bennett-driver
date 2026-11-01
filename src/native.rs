@@ -11,6 +11,51 @@ fn number(o: &Options, key: &str, default: u64) -> Result<u64> {
         .map_err(|e| format!("BD-E-INPUT: {key}: {e}")),
     }
 }
+fn audit_markers(b: &mut Build, m: u32, p: &Path) -> Result<()> {
+    let symbols = b.run(
+        "native-marker-audit",
+        vec![
+            tool(m, "llvm-nm"),
+            "--defined-only".into(),
+            p.display().to_string(),
+        ],
+        None,
+    )?;
+    for name in symbols.lines().filter_map(|l| l.split_whitespace().last()) {
+        if matches!(
+            name,
+            "__bennett_qalloc"
+                | "__bennett_qborrow"
+                | "__bennett_qfree"
+                | "__bennett_gate"
+                | "__bennett_gate2"
+                | "__bennett_gate3"
+                | "__bennett_rot"
+                | "__bennett_measure"
+                | "__bennett_qload"
+                | "__bennett_qstore"
+                | "__bennett_qprep"
+                | "__bennett_observe"
+                | "__bennett_ctrl"
+                | "__bennett_adj"
+                | "__bennett_compute"
+                | "__bennett_reversible"
+                | "__bennett_oracle"
+                | "__bennett_inplace"
+                | "__bennett_effect_console_write"
+                | "__bennett_effect_clock_read"
+                | "__bennett_effect_entropy_read"
+                | "__bennett_effect_block_read"
+                | "__bennett_effect_block_write"
+        ) {
+            return Err(format!(
+                "BD-E-MARKER-DEFINED: §19.9 comparison input {} supplies marker definition {name}",
+                p.display()
+            ));
+        }
+    }
+    Ok(())
+}
 pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
     let m = o.major()?;
     let ws = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
@@ -54,6 +99,18 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         ],
         None,
     )?;
+    let linked = b.out.join("comparison-linked.bc");
+    let bitcode_link = vec![
+        tool(m, "llvm-link"),
+        device.display().to_string(),
+        runtime.display().to_string(),
+        arith.display().to_string(),
+        "--only-needed".into(),
+        "-o".into(),
+        linked.display().to_string(),
+    ];
+    b.run("comparison-bitcode-link", bitcode_link.clone(), None)?;
+    audit_markers(b, m, &linked)?;
     let data = number(o, "bennett-layout-data-base", 4096)?;
     if data < 4096 || data % 4096 != 0 {
         return Err("BD-E-INPUT: comparison data base must be page aligned and leave the 4096-byte null region".into());
@@ -78,21 +135,20 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
             let p = absolute(p)?;
             b.record.set(key, artifact(&p, None)?);
             let output = b.out.join(format!("{key}.o"));
-            b.run(
-                "native-support",
-                vec![
-                    tool(m, "clang"),
-                    "-O2".into(),
-                    "-ffreestanding".into(),
-                    "-fno-builtin".into(),
-                    "-fno-pie".into(),
-                    "-c".into(),
-                    p.display().to_string(),
-                    "-o".into(),
-                    output.display().to_string(),
-                ],
-                None,
-            )?;
+            let mut support = vec![
+                tool(m, "clang"),
+                "-O2".into(),
+                "-ffreestanding".into(),
+                "-fno-builtin".into(),
+                "-fno-pie".into(),
+                "-c".into(),
+                p.display().to_string(),
+                "-o".into(),
+                output.display().to_string(),
+            ];
+            support.extend(sysroot_flags(o)?);
+            b.run("native-support", support, None)?;
+            audit_markers(b, m, &output)?;
             extras.push(output.display().to_string());
         }
     }
@@ -112,9 +168,7 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
             "-static".into(),
             "-no-pie".into(),
             "-fno-merge-all-constants".into(),
-            device.display().to_string(),
-            runtime.display().to_string(),
-            arith.display().to_string(),
+            linked.display().to_string(),
         ];
         argv.extend(extras.clone());
         if let Some(root) = o.get("bennett-sysroot") {
@@ -144,6 +198,10 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
             ("llvm_major", m.into()),
             ("materialised_sha256", device_sha.clone().into()),
             ("link_argv", strings(&argv)),
+            ("bitcode_link_argv", strings(&bitcode_link)),
+            ("linked_sha256", sha(&linked)?.into()),
+            ("runtimes_sha256", sha(&runtime)?.into()),
+            ("arith_sha256", sha(&arith)?.into()),
             ("status", "planned".into()),
         ]);
         if level == "O2" {

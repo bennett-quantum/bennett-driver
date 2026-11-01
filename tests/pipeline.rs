@@ -10,6 +10,7 @@ fn hashtable_pipeline_matches_recorded_objects() {
         .arg("pipeline")
         .output()
         .unwrap();
+    print!("{}", String::from_utf8_lossy(&result.stdout));
     assert!(
         result.status.success(),
         "{}\n{}",
