@@ -1,7 +1,6 @@
-# Spec versions this repo implements. Contract = the published specs, nothing else.
-status = "skeleton"
-isa = "0.3"
-object = "0.3"
-launch = "0.3"
-coverage = "0.3"
-dialect = "0.3"
+# Consumer-accepted contracts; newer drafts are not implicit upgrades.
+status = "milestone-1-in-progress"
+dialect = "0.2.10"
+isa = "0.8"
+[commits]
+"bennett-dialect-spec" = "023f5a771a814270634db3be9cfde88ded69f975"
