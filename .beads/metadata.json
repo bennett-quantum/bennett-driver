@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "bennett_driver",
+  "project_id": "d8acfe43-2c66-4e47-b27b-61716dd06024"
+}
