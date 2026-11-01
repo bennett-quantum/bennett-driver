@@ -24,6 +24,16 @@ pub fn failure(out: Option<&Path>, error: &str, stage: &str, args: &[String]) ->
             "Plugin does not register §19.2 tier/entry options; this is an implementation dependency, not a musl or typed-fault verdict",
             "Plugin must implement whole-program R entry, CC bennett.argv argc/argv/envp launch and §25.1 reports; bp-xkg",
         )
+    } else if code == "BD-E-NATIVE-MARKERS" {
+        (
+            "§17.7 actual plugin-materialised device retains host-side quantum/effect marker calls",
+            "bp-xyn: publish marker-free materialised comparison variants; never define fake markers or substitute the source module",
+        )
+    } else if code == "BD-E-NATIVE-LAYOUT" || error.contains("BD-E-NATIVE-LAYOUT") {
+        (
+            "§19.5 native and device data/global/function/heap/arena/interface addresses must agree",
+            "bennett-driver-cyg.3 / bp-xyn: supply the resolved shared comparison layout and LLVM symbol map; never infer it from __bennett_rt_blk.<f>",
+        )
     } else if code == "BD-E-VERSION" {
         (
             "§19.8/19.9: same target data layout/triple, readable envelope major, exact dialect/ISA/plugin identity and requested hashes",
@@ -32,7 +42,7 @@ pub fn failure(out: Option<&Path>, error: &str, stage: &str, args: &[String]) ->
     } else if error.contains("native") || error.contains("comparison") {
         (
             "§17.7/19.5: comparison must resolve the materialised module with runtimes/arith and no host libc/libm",
-            "Publish matching native entry/primitive/musl and sanitizer closure, and matching device/native address layout; brt-nuu",
+            "Inspect the exact native imports/link diagnostics and resolved device layout; bp-xyn / bennett-driver-cyg.3. ASan/UBSan closure remains brt-nuu.1",
         )
     } else {
         (

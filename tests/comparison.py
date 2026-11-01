@@ -1,27 +1,41 @@
+"""Native support adapter diagnostics; these are NOT plugin acceptance tests."""
 import hashlib, json, pathlib, subprocess, sys, tempfile
-from toolchain import flags
 root=pathlib.Path(__file__).resolve().parents[1]
 ws=root.parent
+def run(args):
+    p=subprocess.run(list(map(str,args)),capture_output=True)
+    assert p.returncode==0,p.stderr.decode()
+    return p.stdout
 with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='comparison-') as tmp:
     for m in (18,23):
         d=pathlib.Path(tmp)/str(m);d.mkdir()
-        # Diagnostic adapter: compile a tiny freestanding input to exercise the
-        # auditable link independently of the blocked production R materialiser.
-        src=d/'main.c';src.write_text('int main(void) { return 0; }\n')
-        subprocess.run([f'/usr/lib/llvm-{m}/bin/clang','-emit-llvm','-c',str(src),'-o',str(d/'device.bc')],check=True)
-        record=d/'native-comparison.json'
-        p=subprocess.run([sys.argv[1],*flags(m,plugin=False),f'--bennett-llvm-major={m}',f'--bennett-materialised={d/"device.bc"}',
-            f'--bennett-comparison-record={record}',f'--bennett-comparison-output={d/"native"}'],capture_output=True)
-        assert record.is_file(),p.stderr.decode()
-        r=json.loads(record.read_text());a=r['link_argv']
-        assert r['llvm_major']==m
-        assert all(x in a for x in ('-nostdlib','-nostdinc','-static','-no-pie'))
-        for key in ('runtimes','arith'):
-            lib=next(pathlib.Path(x) for x in r['bitcode_link_argv'] if pathlib.Path(x).name==f'bennett-{key}.bc')
-            assert hashlib.sha256(lib.read_bytes()).hexdigest()==r[key+'_sha256']
-        assert str(d/'device.bc') in r['bitcode_link_argv']
-        assert not any(x in a for x in ('-lc','-lm','-shared'))
-        # No supplied runtime _start: it must refuse, never return a fake
-        # successful binary with ld's default (incorrect) entry address.
-        assert p.returncode!=0 and ('_start' in p.stderr.decode() or 'undefined' in p.stderr.decode()),p.stderr.decode()
-        print(f'LLVM {m}: strict comparison refusal retained, link argv audited')
+        llvm=pathlib.Path(f'/usr/lib/llvm-{m}/bin')
+        # No marker, no materialiser substitution: a diagnostic already-materialised
+        # primitive consumer exercises the closure/table/strict link in isolation.
+        src=d/'main.c';src.write_text('extern void *__bennett_nz_alloc(unsigned long); extern void __bennett_nz_free(void *); int main(void) { volatile unsigned char *p=__bennett_nz_alloc(1); if (*p) return 1; *p=42; __bennett_nz_free((void *)p); return 0; }\n')
+        run([llvm/'clang','-emit-llvm','-c',src,'-o',d/'device.bc'])
+        layout=d/'layout.json'
+        layout.write_text(json.dumps(dict(null_size=4096,ptr_width=64,heap_base=69632,heap_limit_max=1048576,globals={},interface_regions={})))
+        out=d/'out'
+        args=[sys.argv[1],f'--bennett-llvm-major={m}',f'--bennett-materialised={d/"device.bc"}',f'--bennett-out={out}',f'--bennett-comparison-layout={layout}','--bennett-layout-data-base=65536']
+        run(args)
+        records=json.loads((out/'native-comparisons.json').read_text())
+        assert [r['status'] for r in records]==['linked','linked','blocked'],records
+        assert records[2]['blocked_on']==['brt-nuu.1']
+        table=(out/'native-layout.ll').read_text()
+        assert '@__bennett_rt_native_layout = constant { i64, i64, i64 } { i64 1, i64 69632, i64 1048576 }, align 8' in table
+        for level in ('O0','O2'):
+            r=next(r for r in records if r.get('variant')==level)
+            a=r['link_argv'];assert all(x in a for x in ('-nostdlib','-nostdinc','-static','-no-pie'))
+            assert not any(x in a for x in ('-lc','-lm','-fsanitize=address,undefined'))
+            assert run([out/f'native-{level}'])==b''
+            assert not run([llvm/'llvm-nm','--undefined-only',out/f'native-{level}']).strip()
+            assert b'INTERP' not in run(['readelf','-l',out/f'native-{level}'])
+        manifest=json.loads((out/'manifest.json').read_text())
+        stages=[c['stage'] for c in manifest['commands']]
+        assert stages.index('comparison-bitcode-link') < stages.index('comparison-support-link') < stages.index('comparison-closure-link')
+        assert records[0]['native_support_sha256']==hashlib.sha256((ws/f'bennett-runtimes/dist/llvm{m}/musl-sysroot/lib/native-support.bc').read_bytes()).hexdigest()
+        # No inferred/default heap and no use of §14.9 block identity.
+        missing=d/'missing';p=subprocess.run([*args[:3],f'--bennett-out={missing}'],capture_output=True)
+        assert p.returncode and 'BD-E-NATIVE-LAYOUT' in p.stderr.decode(),p.stderr.decode()
+        print(f'LLVM {m}: support merge/table and plain O0/O2 diagnostic execution; sanitizer explicitly blocked')

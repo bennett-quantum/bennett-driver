@@ -1,3 +1,11 @@
+# Native comparison integration — 2026-11-01 (in progress, no push)
+
+Published native-support merge, required resolved-layout table and plain O0/O2
+strict links pass both-major adapter diagnostics, including allocator execution,
+no undefined symbols and no ELF interpreter. ASan/UBSan row explicitly blocked
+on brt-nuu.1. Corpus/plugin acceptance remains under test; diagnostic inputs are
+not acceptance. Missing layout and mismatched native data end fail loudly.
+
 # M1 — 2026-11-01 (incomplete, no push)
 
 - §19.1/19.9 full-LTO pipeline: green on LLVM18/23. All four rung-2 launch
