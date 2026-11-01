@@ -12,7 +12,7 @@ Arithmetic instance integration uses the 0.2.12 §13.1 request schema without cl
 
 Verification receipts:
 
-- `timeout 240 cargo test --offline -j4 --test native_faults -- --nocapture --test-threads=4`: PASS, 36 exact fault outcomes across LLVM18/23 O0/O2 (before the later arithmetic hook; final regression rerun recorded in job progress).
+- `BENNETT_DRIVER_TEST_ARTIFACTS=.tmp/native-probes-20261101T142910Z timeout 300 cargo test --offline -j4 --test native_faults --test classifier --test comparison -- --nocapture --test-threads=4`: PASS after all code changes (three tests), including 36 exact materialised fault outcomes and actual source UBSan failure diagnostics across LLVM18/23.
 - `BENNETT_DRIVER_TEST_ARTIFACTS=.tmp/native-probes-20261101T142910Z timeout 420 cargo test --offline -j4 --test reports --test inputs --test reversible --test classifier --test comparison -- --nocapture --test-threads=4`: PASS, five tests; actual R/musl blockers retained.
 - `BENNETT_DRIVER_TEST_PUBLICATIONS=.tmp/sol-driver-queue/publications timeout 420 cargo test --offline -j4 --test pipeline -- --nocapture --test-threads=4`: PASS, two tests, four frozen launch hashes equal; recorded ten-case native/VM/reference observations agree, actual driver-native residual qalloc/qfree blockers remain. Explicit immutable publications avoid invoking Git for recovery.
 - `timeout 360 cargo test --offline -j4 --test arith_instances -- --nocapture --test-threads=4`: FAIL at real native linking (missing runtime fenv; diagnostic layout mismatch). No real instance execution or tamper-regression pass claimed.
