@@ -25,45 +25,53 @@ def publication(repo,m,digest,job):
         blob=pathlib.Path(pin['path']).read_bytes()
         assert hashlib.sha256(blob).hexdigest()==digest, f'Explicit publication changed: {pin["path"]}'
     else:
-        blob=(WS/repo/relative).read_bytes()
-    if hashlib.sha256(blob).hexdigest()!=digest:
-        for rev in run(['git','-C',WS/repo,'log','--all','--format=%H','--',relative]).decode().split():
-            candidate=run(['git','-C',WS/repo,'show',f'{rev}:{relative}'])
-            if hashlib.sha256(candidate).hexdigest()==digest:
-                blob=candidate
-                break
-        else: raise AssertionError(f'Pinned {repo} LLVM{m} publication unavailable: {digest}')
+        # Historical regression publications are separate pinned sibling aliases.
+        # Never search the live tree's Git history under gate isolation.
+        blob=(WS/(repo+'-rung2')/relative).read_bytes()
+    assert hashlib.sha256(blob).hexdigest()==digest, f'Pinned {repo} LLVM{m} publication differs: {digest}'
     path=pathlib.Path(job)/f'{repo}-{m}.bc'
     path.write_bytes(blob)
     assert sha(path)==digest
     return path
 
-evidence_root = WS/'bennett-conformance/.tmp/rung-2'
-latest = pathlib.Path((evidence_root/'latest').read_text().strip())
-evidence = pathlib.Path(os.environ.get('BENNETT_RUNG2_EVIDENCE') or latest).resolve()
+evidence = pathlib.Path(os.environ.get('BENNETT_RUNG2_EVIDENCE') or
+    WS/'bennett-conformance/ladder/rung-2/evidence/driver-regression').resolve()
 print(f'Rung-2 evidence: {evidence}', flush=True)
 fixtures = WS/'bennett-conformance/ladder/rung-2/fixtures'
 evidence_manifest = json.loads((evidence/'report.json').read_text())['manifest']
+gate_config=tomllib.loads((ROOT/'gate.toml').read_text())
+assert gate_config['siblings']['bennett-plugin']['sha']==evidence_manifest['plugin_commit'], 'gate plugin commit differs from frozen regression'
+for name,digest in evidence_manifest['fixture_sha256'].items():
+    assert sha(fixtures/name)==digest, f'Published rung-2 fixture changed: {name}'
 with tempfile.TemporaryDirectory(prefix='integration-',dir=ROOT/'.tmp') as job:
     for m in (18,23):
         out = pathlib.Path(job)/str(m)
-        command = next(c for c in evidence_manifest['commands'] if c['tag']==f'{m}/production')
-        plugin_source = pathlib.Path(next(a.split('=',1)[1] for a in command['argv'] if a.startswith('-load-pass-plugin=')))
+        # gate.toml builds this immutable sibling once per implementation SHA.
+        # Build paths may change the .so bytes; the actual hash is still bound
+        # into the driver manifest and certificate build record.
+        plugin_source = pathlib.Path(os.environ.get('BENNETT_RUNG2_PLUGIN_DIR') or WS/'bennett-plugin/build')/f'libbennett-plugin-{m}.so'
         plugin = pathlib.Path(job)/f'plugin-{m}.so'
         shutil.copyfile(plugin_source, plugin)
-        plugin_digest = evidence_manifest['plugin_sha256'][str(m)]
-        assert sha(plugin) == plugin_digest, f'Frozen evidence plugin changed: {plugin_source}'
-        pins = tomllib.loads((plugin_source.parent.parent/'SPEC_VERSIONS.toml').read_text())['arith']
-        # Snapshot exact published bytes; never race a sibling rebuild.
-        arith = publication('bennett-arith',m,pins[f'llvm{m}_sha256'],job)
+        plugin_digest = sha(plugin)
+        arith_digest=evidence_manifest['arith_sha256'][str(m)]
+        arith = publication('bennett-arith',m,arith_digest,job)
         runtime_digest=evidence_manifest['runtimes_sha256'][str(m)]
         runtime = publication('bennett-runtimes',m,runtime_digest,job)
+        expected_native = (evidence/str(m)/'native.txt').read_bytes()
+        assert len(expected_native.splitlines())==10
+        for executor in ('VM-forward','reference-forward'):
+            assert (evidence/str(m)/(executor+'.txt')).read_bytes()==expected_native
+        for entry in ('ht_demo_basic','ht_demo_grow'):
+            assert (evidence/str(m)/'out'/entry/'launch.bennett').is_file()
+        if '--check-inputs' in sys.argv[2:]:
+            print(f'LLVM{m}: selected fixture/source/library hashes, executor bytes and pinned plugin selection verified',flush=True)
+            continue
         run([EXE, f'--bennett-llvm-major={m}', '-bennett-dialect=0.2.10', '-bennett-isa=0.8',
              f'-bennett-out={out}', '-bennett-budget-default=10000000,1048576,65536,256,65536',
              '--bennett-analysis-budget-ms=300000',
              f'--bennett-runtimes={runtime}', f'--bennett-runtimes-sha256={runtime_digest}',
              f'--bennett-plugin={plugin}', f'--bennett-plugin-sha256={plugin_digest}',
-             f'--bennett-arith={arith}', f'--bennett-arith-sha256={pins[f"llvm{m}_sha256"]}', fixtures/'hashtable_marked.c'])
+             f'--bennett-arith={arith}', f'--bennett-arith-sha256={arith_digest}', fixtures/'hashtable_marked.c'])
         for name in ('linked.bc','postlink.bc','device.bc','host.bc','launches.json','manifest.json'):
             assert (out/name).is_file(), f'missing {name}'
         for entry in ('ht_demo_basic','ht_demo_grow'):
@@ -73,7 +81,7 @@ with tempfile.TemporaryDirectory(prefix='integration-',dir=ROOT/'.tmp') as job:
         manifest = json.loads((out/'manifest.json').read_text())
         assert manifest['status'] == 'complete'
         assert manifest['llvm_major'] == m
-        assert manifest['arith']['sha256'] == pins[f'llvm{m}_sha256']
+        assert manifest['arith']['sha256'] == arith_digest
         assert manifest['plugin']['sha256'] == plugin_digest
         assert manifest['plugin']['identity'] == 'dialect-0.2.10;isa-0.8'
         assert len(manifest['inputs']) == 1
@@ -93,12 +101,11 @@ with tempfile.TemporaryDirectory(prefix='integration-',dir=ROOT/'.tmp') as job:
         # Compare recorded native O0/sanitizer and O2 observations, then attempt
         # the driver's stricter same-materialised-module comparison. The latter
         # must not silently reuse these hosted baseline binaries.
-        expected_native = (evidence/str(m)/'native.txt').read_bytes()
-        assert len(expected_native.splitlines())==10
-        for executor in ('VM-forward','reference-forward'):
-            assert (evidence/str(m)/(executor+'.txt')).read_bytes()==expected_native
         for level in ('O0','O2'):
-            assert run([evidence/str(m)/f'native-{level}']) == expected_native
+            baseline=pathlib.Path(job)/f'hosted-{m}-{level}'
+            flags=['-O0','-fsanitize=address,undefined','-fno-omit-frame-pointer'] if level=='O0' else ['-O2']
+            run([f'/usr/lib/llvm-{m}/bin/clang',*flags,fixtures/'hashtable.c',fixtures/'main_golden.c','-o',baseline])
+            assert run([baseline]) == expected_native
         native_record = out/'native-comparison.json'
         p = subprocess.run([str(EXE), f'--bennett-llvm-major={m}',
             f'--bennett-materialised={out/"device.bc"}', f'--bennett-arith={arith}',

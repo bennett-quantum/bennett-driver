@@ -25,6 +25,9 @@ with (d/'git-calls').open('a') as log: log.write(json.dumps(args)+'\\n')
 command=args[2:]
 if command==['rev-parse','--show-toplevel']: print(base)
 elif command==['rev-parse','--path-format=absolute','--git-common-dir']: print(base/'.git')
+elif command==['config','--path','--get','core.hooksPath']:
+ if not os.environ.get('STUB_HOOKS_PATH'): raise SystemExit(1)
+ print(os.environ['STUB_HOOKS_PATH'])
 elif command==['show','HEAD:gate.toml']:
  if os.environ.get('STUB_MISSING_HEAD'): raise SystemExit(1)
  print((d/'head-config').read_text(),end='')
@@ -61,4 +64,16 @@ else: raise AssertionError(args)
     for invalid in ('short','g'*40,'a'*39):
         (d/'head-config').write_text(f'tool_sha = "{invalid}"\n')
         p=invoke(); assert p.returncode==3 and 'no full tool_sha' in p.stderr,p
+    (d/'head-config').write_text(f'tool_sha = "{pin}"\n')
+    shutil.copy(root/'scripts/install-hooks.sh',repo/'scripts/install-hooks.sh')
+    for configured in ('','.beads/hooks',str(d/'custom hooks')):
+        hooks=pathlib.Path(configured) if configured else repo/'.git/hooks'
+        if not hooks.is_absolute(): hooks=repo/hooks
+        install_env=dict(env,STUB_HOOKS_PATH=configured)
+        p=subprocess.run(['bash',str(repo/'scripts/install-hooks.sh')],cwd=repo,env=install_env,text=True,capture_output=True)
+        assert p.returncode==0,p.stdout+p.stderr
+        effective=hooks/'pre-push'
+        assert effective.is_symlink() and effective.resolve()==repo/'scripts/pre-push',effective
+        p=subprocess.run([effective],cwd=repo,env=dict(install_env,BENNETT_GATE_HOOK_PROBE='1'),text=True,capture_output=True)
+        assert p.returncode==0 and p.stdout==f'bennett-gate-hook-chained {repo}\n',p
     print('Pinned hook: probe, HEAD pin, extraction/cache, argv/stdin, scrubbed environment and failures verified')

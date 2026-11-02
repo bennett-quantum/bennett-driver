@@ -61,3 +61,24 @@ define i32 @main() {
             p = subprocess.run(['python3',root/'scripts/arith-instances.py','verify',out, str(major)],capture_output=True)
             assert p.returncode and b'BD-E-ARITH-INSTANCES' in p.stderr, (field,p)
         (out/'arith-instances/manifest.json').write_text(original)
+
+        # A matching manifest is insufficient: alter the actual export ABI,
+        # update its bitcode digest honestly, and retain the requested type.
+        instance=out/'arith-instances/bennett-arith.bc'
+        original_bitcode=instance.read_bytes()
+        bad_ir=d/f'wrong-literal-type-{major}.ll'
+        lines=[header]
+        for index,export in enumerate(manifest['exports']):
+            result,args=export['function_type'].split(' (',1)
+            args=args[:-1].split(', ')
+            if index==0: args[1]='i'+str(int(args[1][1:])+1)
+            params=', '.join(f'{ty} %p{i}' for i,ty in enumerate(args))
+            lines.append(f'define {result} @{export["symbol"]}({params}) {{ ret {result} 0 }}')
+        bad_ir.write_text('\n'.join(lines)+'\n')
+        run([llvm/'llvm-as',bad_ir,'-o',instance])
+        broken=json.loads(original);broken['bitcode_sha256']=sha(instance)
+        (out/'arith-instances/manifest.json').write_text(json.dumps(broken,sort_keys=True,separators=(',',':')))
+        p=subprocess.run(['python3',root/'scripts/arith-instances.py','verify',out,str(major)],capture_output=True)
+        assert p.returncode and b'literal LLVM function type mismatch' in p.stderr,p.stderr
+        instance.write_bytes(original_bitcode)
+        (out/'arith-instances/manifest.json').write_text(original)
