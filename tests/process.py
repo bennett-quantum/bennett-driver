@@ -1,5 +1,6 @@
 """Process-entry component checks; native diagnostics do not establish R acceptance."""
 import hashlib, json, os, pathlib, re, subprocess, sys, tempfile
+from contextlib import nullcontext
 
 root=pathlib.Path(__file__).resolve().parents[1]
 ws=root.parent
@@ -25,7 +26,9 @@ int program(int argc,char **argv,char **envp) {
  return 0;
 }
 '''
-with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='process-') as temp:
+evidence=os.environ.get('BENNETT_DRIVER_PROCESS_EVIDENCE')
+if evidence: pathlib.Path(evidence).mkdir(parents=True,exist_ok=False)
+with (nullcontext(evidence) if evidence else tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='process-')) as temp:
     d=pathlib.Path(temp)
     for major in (18,23):
         llvm=pathlib.Path(f'/usr/lib/llvm-{major}/bin')
@@ -34,15 +37,19 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='process-') as temp:
         out=d/f'production-{major}'
         command=[exe,f'--bennett-llvm-major={major}','-bennett-dialect=0.2.10',
             '--bennett-tier=reversible','--bennett-entry=program',f'--bennett-out={out}',
+            '--bennett-emit=process-bitcode',
             f'--bennett-sysroot={sysroot}','--bennett-analysis-budget-ms=300000',
             '-bennett-budget-default=10000000,1048576,65536,256,65536',c]
-        p=subprocess.run(list(map(str,command)),capture_output=True,timeout=360)
+        p=subprocess.run(['timeout','180',*map(str,command)],capture_output=True,timeout=190)
+        assert p.returncode==0,p.stderr.decode()
         manifest=json.loads((out/'manifest.json').read_text())
         assert 'process_preparation' in manifest, p.stderr.decode()
         prepared=out/'process-prepared.bc'
         assert manifest['process_preparation']['module']['sha256']==sha(prepared)
         stages=[x['stage'] for x in manifest['commands']]
-        assert stages.index('process-entry') < stages.index('postlink') < stages.index('plugin'), stages
+        assert stages.index('process-entry') < stages.index('process-root-audit'), stages
+        assert manifest['status']=='prepared' and not (out/'launches.json').exists()
+        assert not any(stage in stages for stage in ('postlink','plugin'))
         report=json.loads((out/'process-entry.json').read_text())
         ir=run([llvm/'llvm-dis',out/'process-entry.bc','-o','-']).decode()
         body=ir.split('define i32 @program(',1)[1].split('\n}',1)[0]
@@ -51,17 +58,14 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='process-') as temp:
         linked=run([llvm/'llvm-dis',prepared,'-o','-']).decode()
         assert re.search(r'^define .*@__bennett_rt_prepare_process\(',linked,re.M), 'helper must be defined before S2/S7'
         assert 'global { i32, i32 } zeroinitializer' in linked, 'fresh shared fenv image'
-        assert any(x['stage']=='plugin' for x in manifest['commands'])
-        if p.returncode:
-            blockers=json.loads((out/'blockers.json').read_text())
-            print(f'LLVM{major}: preparation is rooted; production verdict {blockers[0]["code"]}')
-        else:
-            print(f'LLVM{major}: production artifacts emitted; executor acceptance remains separate')
+        print(f'LLVM{major}: explicit preparation stage emitted; full R acceptance remains separate')
         # Inspect this driver's pre-materialisation stage with the real native
         # runtime. This is an isolated entry-preparation diagnostic, not a
         # substitute for the plugin's actual materialised comparison module.
         layout=d/f'layout-{major}.json'
-        layout.write_text(json.dumps(dict(null_size=4096,ptr_width=64,heap_base=73728,
+        # The retained O0/O2 maps end at 0x10a38/0x10a18; the first page is
+        # 0x11000. The driver's equality assertion remains mandatory.
+        layout.write_text(json.dumps(dict(null_size=4096,ptr_width=64,heap_base=69632,
             heap_limit_max=1048576,globals={},interface_regions={})))
         for name,call in [('supplied','program(argc,argv,envp)'),('empty','program(0,0,0)')]:
             harness=d/f'{name}-{major}.c'

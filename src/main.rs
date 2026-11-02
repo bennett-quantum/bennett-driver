@@ -15,7 +15,7 @@ type Result<T> = std::result::Result<T, String>;
 const DIALECT: &str = "0.2.10";
 const ISA: &str = "0.8";
 const IDENTITY: &str = "dialect-0.2.10;isa-0.8";
-const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.10 -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8,\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n --bennett-classifier-input=FILE (original C, UBSan-minimal diagnostic)\n Plain O2 comparison and O0 diagnostic; full ASan blocked on brt-nuu.2\n";
+const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.10 -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8,\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n --bennett-emit=process-bitcode (preparation stage; manifest status prepared)\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n --bennett-classifier-input=FILE (original C, UBSan-minimal diagnostic)\n Plain O2 comparison and O0 diagnostic; full ASan blocked on brt-nuu.2\n";
 #[derive(Debug)]
 struct Options {
     values: BTreeMap<String, String>,
@@ -55,6 +55,7 @@ impl Options {
                         | "bennett-arith-generator"
                         | "bennett-arith-generator-sha256"
                         | "bennett-pipeline"
+                        | "bennett-emit"
                         | "bennett-materialised"
                         | "bennett-comparison-record"
                         | "bennett-comparison-output"
@@ -108,6 +109,15 @@ impl Options {
             }
         }
         let adapter = o.get("bennett-materialised").is_some();
+        if let Some(emit) = o.get("bennett-emit") {
+            if emit != "process-bitcode"
+                || adapter
+                || o.get("bennett-tier") != Some("reversible")
+                || o.get("bennett-comparison") == Some("true")
+            {
+                return Err("BD-E-INPUT: --bennett-emit=process-bitcode requires a reversible process entry and excludes materialised/comparison mode".into());
+            }
+        }
         if adapter && o.get("bennett-dialect").is_none() {
             o.values.insert("bennett-dialect".into(), DIALECT.into());
         }
@@ -530,6 +540,18 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
         &[&runtime, &arith],
     )?;
     process::prepare(o, b, m, &linked, &runtime, &arith)?;
+    if o.get("bennett-emit") == Some("process-bitcode") {
+        b.record
+            .set("completion", "process-bitcode preparation stage".into());
+        b.record.set(
+            "outputs",
+            obj([(
+                "process_prepared",
+                artifact(&b.out.join("process-prepared.bc"), None)?,
+            )]),
+        );
+        return b.save("prepared");
+    }
     let pipeline = o.get("bennett-pipeline").unwrap_or("lto<O3>");
     b.run(
         "postlink",
@@ -757,5 +779,23 @@ mod tests {
                 .unwrap(),
             23
         );
+    }
+    #[test]
+    fn process_bitcode_stage_has_explicit_scope() {
+        let base = [
+            "-bennett-dialect=0.2.10",
+            "-bennett-out=o",
+            "--bennett-emit=process-bitcode",
+            "x.bc",
+        ];
+        assert!(parse(&base).is_err());
+        let mut args = base.to_vec();
+        args.extend(["--bennett-tier=reversible", "--bennett-entry=main"]);
+        assert_eq!(
+            parse(&args).unwrap().get("bennett-emit"),
+            Some("process-bitcode")
+        );
+        args.push("--bennett-comparison=true");
+        assert!(parse(&args).is_err());
     }
 }
