@@ -100,6 +100,16 @@ pub fn prepare(
             ));
         }
     }
+    b.run(
+        "process-definition-audit",
+        vec![
+            executable.display().to_string(),
+            "--verify".into(),
+            module.display().to_string(),
+            entry.into(),
+        ],
+        None,
+    )?;
     let prepared = b.out.join("process-prepared.bc");
     fs::copy(module, &prepared).map_err(|e| format!("process prepared module: {e}"))?;
     b.record.set(
@@ -107,6 +117,7 @@ pub fn prepare(
         obj([
             ("schema", "bennett-driver-process-preparation-1".into()),
             ("entry", entry.into()),
+            ("helper_type", "void (i32, ptr, ptr)".into()),
             ("module", artifact(&prepared, None)?),
             ("wrapper", artifact(&output, None)?),
             ("report", artifact(&report, None)?),

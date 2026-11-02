@@ -16,11 +16,12 @@ static int fail(const Twine &message) {
 }
 
 int main(int argc, char **argv) {
-  if (argc != 5)
-    return fail("expected INPUT.bc OUTPUT.bc ENTRY REPORT.json");
+  bool audit = argc == 4 && StringRef(argv[1]) == "--verify";
+  if (!audit && argc != 5)
+    return fail("expected INPUT.bc OUTPUT.bc ENTRY REPORT.json or --verify INPUT.bc ENTRY");
   LLVMContext context;
   SMDiagnostic diagnostic;
-  auto module = parseIRFile(argv[1], diagnostic, context);
+  auto module = parseIRFile(audit ? argv[2] : argv[1], diagnostic, context);
   if (!module) {
     diagnostic.print(argv[0], errs());
     return 1;
@@ -52,6 +53,19 @@ int main(int argc, char **argv) {
     if (auto *function = m.getFunction(item.first))
       if (function->getFunctionType() != item.second)
         return fail("incompatible runtime function type: " + Twine(item.first));
+  }
+  if (audit) {
+    for (StringRef name : {StringRef("__bennett_rt_prepare_process"), StringRef("exit")}) {
+      auto *function = m.getFunction(name);
+      if (!function || function->isDeclaration())
+        return fail("required runtime definition is absent: " + name);
+    }
+    if (user->getFunctionType() != wrapperType ||
+        !user->hasFnAttribute("bennett.driver.process.entry"))
+      return fail("prepared entry wrapper has an incompatible ABI");
+    if (verifyModule(m, &errs())) return fail("prepared module failed verification");
+    outs() << "process entry and runtime helper definitions verified\n";
+    return 0;
   }
   auto prepare = m.getOrInsertFunction("__bennett_rt_prepare_process", prepareType);
   auto exit = m.getOrInsertFunction("exit", exitType);
