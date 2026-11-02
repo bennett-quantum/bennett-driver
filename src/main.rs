@@ -2,6 +2,7 @@ mod arith;
 mod classifier;
 mod json;
 mod native;
+mod process;
 mod report;
 use json::{Json, obj, strings};
 use std::{
@@ -528,6 +529,7 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
         &linked,
         &[&runtime, &arith],
     )?;
+    process::prepare(o, b, m, &linked, &runtime, &arith)?;
     let pipeline = o.get("bennett-pipeline").unwrap_or("lto<O3>");
     b.run(
         "postlink",
