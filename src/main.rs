@@ -109,14 +109,13 @@ impl Options {
             }
         }
         let adapter = o.get("bennett-materialised").is_some();
-        if let Some(emit) = o.get("bennett-emit") {
-            if emit != "process-bitcode"
+        if let Some(emit) = o.get("bennett-emit")
+            && (emit != "process-bitcode"
                 || adapter
                 || o.get("bennett-tier") != Some("reversible")
-                || o.get("bennett-comparison") == Some("true")
-            {
-                return Err("BD-E-INPUT: --bennett-emit=process-bitcode requires a reversible process entry and excludes materialised/comparison mode".into());
-            }
+                || o.get("bennett-comparison") == Some("true"))
+        {
+            return Err("BD-E-INPUT: --bennett-emit=process-bitcode requires a reversible process entry and excludes materialised/comparison mode".into());
         }
         if adapter && o.get("bennett-dialect").is_none() {
             o.values.insert("bennett-dialect".into(), DIALECT.into());
@@ -510,14 +509,24 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
     let post = b.out.join("postlink.bc");
     let mut link = vec![tool(m, "llvm-link")];
     link.extend(modules);
-    link.extend([
-        runtime.display().to_string(),
-        arith.display().to_string(),
-        "--only-needed".into(),
-        "-o".into(),
-        linked.display().to_string(),
-    ]);
-    b.run("runtime-link", link, None)?;
+    let process_entry = o.get("bennett-tier") == Some("reversible");
+    if !process_entry {
+        link.extend([
+            runtime.display().to_string(),
+            arith.display().to_string(),
+            "--only-needed".into(),
+        ]);
+    }
+    link.extend(["-o".into(), linked.display().to_string()]);
+    b.run(
+        if process_entry {
+            "process-input-link"
+        } else {
+            "runtime-link"
+        },
+        link,
+        None,
+    )?;
     let instances = b.out.join("arith-instances/bennett-arith.bc");
     if instances.is_file() {
         b.run(
@@ -532,14 +541,17 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
             None,
         )?;
     }
-    close_libraries(
-        b,
-        m,
-        "production-library-closure",
-        &linked,
-        &[&runtime, &arith],
-    )?;
-    process::prepare(o, b, m, &linked, &runtime, &arith)?;
+    if process_entry {
+        process::prepare(o, b, m, &linked, &runtime, &arith)?;
+    } else {
+        close_libraries(
+            b,
+            m,
+            "production-library-closure",
+            &linked,
+            &[&runtime, &arith],
+        )?;
+    }
     if o.get("bennett-emit") == Some("process-bitcode") {
         b.record
             .set("completion", "process-bitcode preparation stage".into());

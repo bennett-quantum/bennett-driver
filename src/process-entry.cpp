@@ -162,6 +162,14 @@ int main(int argc, char **argv) {
   b.CreateBr(envHead);
   b.SetInsertPoint(invoke);
   b.CreateCall(prepare, {count, actualArgv, actualEnvp});
+  // Select public process aliases in the same first runtime link as their
+  // backing objects. A late --only-needed import of a weak alias can retain a
+  // private aliasee copy instead of the already-materialised process state.
+  for (StringRef name : {StringRef("environ"), StringRef("program_invocation_name"),
+                         StringRef("program_invocation_short_name")}) {
+    auto *state = m.getOrInsertGlobal(name, ptr);
+    b.CreateLoad(ptr, state)->setVolatile(true);
+  }
   SmallVector<Value *, 3> forwarded;
   if (params) forwarded = {count, actualArgv};
   if (params == 3) forwarded.push_back(actualEnvp);
