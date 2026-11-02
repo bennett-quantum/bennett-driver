@@ -68,6 +68,8 @@ with (nullcontext(evidence) if evidence else tempfile.TemporaryDirectory(dir=roo
         linked=run([llvm/'llvm-dis',prepared,'-o','-']).decode()
         assert re.search(r'^define .*@__bennett_rt_prepare_process\(',linked,re.M), 'helper must be defined before S2/S7'
         assert 'global { i32, i32 } zeroinitializer' in linked, 'fresh shared fenv image'
+        definitions={line.split()[-1] for line in run([llvm/'llvm-nm','--defined-only',prepared]).decode().splitlines() if line.split()}
+        assert not definitions.intersection({'__bennett_nz_alloc','__bennett_nz_free','__bennett_nz_fault','_start'}), 'native-only support entered production preparation'
         print(f'LLVM{major}: explicit preparation stage emitted; full R acceptance remains separate')
         # Missing or differently typed preparation cannot silently fall back to
         # an unprepared process, even when llvm-link accepts opaque pointers.
@@ -125,7 +127,29 @@ int main(int argc,char **argv,char **envp) {
                         assert run([display,'A','BC'],executable=native/f'native-{level}',env=dict(os.environ,BENNETT_PROCESS_BYTES='ok'))==b''
             record=json.loads((native/'manifest.json').read_text())
             assert record['native_check_adapter'] and record['checked_materialised']
+            native_ir=run([llvm/'llvm-dis',native/'comparison.bc','-o','-']).decode()
+            functions=re.findall(r'^define [^\n]*\{\n.*?^\}',native_ir,re.M|re.S)
+            startup=[body for body in functions if '@__bennett_rt_native_inputs(' in body and '@__bennett_rt_prepare_process(' in body]
+            assert startup and all(body.index('@__bennett_rt_native_inputs(')<body.index('@__bennett_rt_prepare_process(') for body in startup)
+            checked_prepare=[body for body in functions if re.match(r'define [^\n]*@__bennett_rt_prepare_process\(',body)]
+            assert checked_prepare and '@__bennett_rt_native_check(' in checked_prepare[0]
         print(f'LLVM{major}: supplied/empty vectors, errno/fenv reset, aliases and fresh native images verified')
+        # The two-parameter C main form still receives the same prepared envp
+        # through public environ while forwarding exactly its original ABI.
+        two_source=d/f'two-{major}.c'
+        two_source.write_text(source.replace('int program(int argc,char **argv,char **envp) {',
+            'int program(int argc,char **argv) { char **envp=environ;'))
+        two_prepared=d/f'two-prepared-{major}'
+        two_args=[str(x) for x in command]
+        two_args=[f'--bennett-out={two_prepared}' if x.startswith('--bennett-out=') else str(two_source) if x==str(c) else x for x in two_args]
+        run(two_args)
+        assert json.loads((two_prepared/'process-entry.json').read_text())['user_parameters']==2
+        two_out=d/f'two-native-{major}'
+        run([exe,f'--bennett-llvm-major={major}',f'--bennett-materialised={two_prepared/"process-prepared.bc"}',
+            f'--bennett-native-input={d/f"supplied-{major}.c"}',f'--bennett-out={two_out}',
+            f'--bennett-comparison-layout={layout}','--bennett-layout-data-base=65536'])
+        for level in ('O0','O2'):
+            assert run([two_out/f'native-{level}','A','BC'],env=dict(os.environ,BENNETT_PROCESS_BYTES='ok'))==b''
         bad=d/f'bad-{major}.c'
         bad.write_text('''extern int program(int,char **,char **);
 extern void *__bennett_nz_alloc(unsigned long);
