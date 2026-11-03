@@ -1,13 +1,15 @@
 import json, os, pathlib, subprocess, sys, tempfile
-from toolchain import flags
+from toolchain import flags, target_headers
 root = pathlib.Path(__file__).resolve().parents[1]
 ws = root.parent
 with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='rung3-') as temp:
     for m in (18,23):
         out = pathlib.Path(temp)/str(m)
+        diagnostic=pathlib.Path(temp)/f'effect-console-{m}.ll'
+        diagnostic.write_text(target_headers(m)+(ws/'bennett-conformance/ladder/rung-3/fixtures/effect-console-r.ll').read_text())
         argv = [sys.argv[1], '--bennett-tier=reversible', '--bennett-entry=main',
                 '-bennett-dialect=0.2.10', '-bennett-isa=0.8', f'--bennett-llvm-major={m}',
-                '-bennett-out='+str(out), str(ws/'bennett-conformance/ladder/rung-3/fixtures/effect-console-r.ll')]
+                '-bennett-out='+str(out), str(diagnostic)]
         argv[1:1]=flags(m)
         p = subprocess.run(argv,capture_output=True)
         assert (out/'manifest.json').is_file(), p.stderr.decode()

@@ -76,6 +76,57 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
             .map(PathBuf::from)
             .unwrap_or(b.out.join("native-O2")),
     )?;
+    let mut protected = vec![device.clone(), runtime.clone(), arith.clone()];
+    protected.extend(o.inputs.iter().map(absolute).collect::<Result<Vec<_>>>()?);
+    for key in [
+        "bennett-plugin",
+        "bennett-native-input",
+        "bennett-native-backend",
+        "bennett-native-support",
+        "bennett-native-check",
+        "bennett-classifier-input",
+        "bennett-comparison-layout",
+        "bennett-budgets",
+        "bennett-argv-replies",
+        "bennett-disk",
+    ] {
+        if let Some(path) = o.get(key) {
+            protected.push(absolute(path)?);
+        }
+    }
+    protected.extend([
+        ws.join("bennett-runtimes/scripts/native-check"),
+        ws.join(format!(
+            "bennett-runtimes/dist/llvm{m}/musl-sysroot/lib/native-support.bc"
+        )),
+    ]);
+    let mut destinations = vec![
+        ("comparison record", record_path.clone()),
+        ("O2 executable", exe.clone()),
+        ("O0 executable", exe.with_file_name("native-O0")),
+    ];
+    for name in [
+        "manifest.json",
+        "native-comparisons.json",
+        "native-detection.json",
+        "native-classifiers.json",
+        "resolved-layout.json",
+        "native-layout.ll",
+        "native-layout.bc",
+        "comparison.ld",
+        "comparison.bc",
+        "comparison-linked.bc",
+        "comparison-check-input.bc",
+        "comparison-checked.bc",
+        "comparison-adapted.bc",
+        "arith-input.ll",
+        "native-memory.bc",
+        "bennett-native-input.bc",
+        "bennett-native-backend.bc",
+    ] {
+        destinations.push((name, b.out.join(name)));
+    }
+    output_paths::admit(&protected, &destinations)?;
     let device_sha = sha(&device)?;
     for (key, p) in [("runtimes", &runtime), ("arith", &arith)] {
         b.record
@@ -490,5 +541,8 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         ));
     }
     classifier::build(o, b, m, &arith)?;
+    if sha(&device)? != device_sha {
+        return Err("BD-E-OUTPUT-PATH: comparison changed the original materialised input".into());
+    }
     b.save("linked")
 }

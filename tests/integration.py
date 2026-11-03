@@ -38,7 +38,12 @@ evidence = pathlib.Path(os.environ.get('BENNETT_RUNG2_EVIDENCE') or
     WS/'bennett-conformance/ladder/rung-2/evidence/driver-regression').resolve()
 print(f'Rung-2 evidence: {evidence}', flush=True)
 fixtures = WS/'bennett-conformance/ladder/rung-2/fixtures'
-evidence_manifest = json.loads((evidence/'report.json').read_text())['manifest']
+report = evidence/'report.json'
+if not report.is_file():
+    raise SystemExit(f'BD-E-TEST-FIXTURE: required published rung-2 fixture is missing: {report}; '
+        'bennett-driver-3j4 requires conformance to publish the tracked driver-regression fixture '
+        'and the gate to pin that publication; no live sibling .tmp fallback is permitted')
+evidence_manifest = json.loads(report.read_text())['manifest']
 gate_config=tomllib.loads((ROOT/'gate.toml').read_text())
 assert gate_config['siblings']['bennett-plugin']['sha']==evidence_manifest['plugin_commit'], 'gate plugin commit differs from frozen regression'
 for name,digest in evidence_manifest['fixture_sha256'].items():

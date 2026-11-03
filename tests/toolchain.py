@@ -9,3 +9,10 @@ def flags(major, plugin=True):
     for key in ('runtimes','arith'):
         result += [f'--bennett-{key}='+pin[key]['path'],f'--bennett-{key}-sha256='+pin[key]['sha256']]
     return result
+
+def target_headers(major):
+    """Make test IR state the matching frontend ABI explicitly."""
+    import subprocess
+    result = subprocess.run([f'/usr/lib/llvm-{major}/bin/clang', '-x', 'c', '-',
+        '-S', '-emit-llvm', '-o', '-'], input=b'int target_probe;\n', capture_output=True, check=True)
+    return '\n'.join(line for line in result.stdout.decode().splitlines() if line.startswith('target '))+'\n'

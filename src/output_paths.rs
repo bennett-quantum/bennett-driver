@@ -1,0 +1,55 @@
+//! Admit destinations before any comparison writes or native code generation.
+use super::*;
+use std::os::unix::fs::MetadataExt;
+
+fn resolved(path: &Path) -> Result<PathBuf> {
+    match fs::canonicalize(path) {
+        Ok(path) => Ok(path),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let parent = path
+                .parent()
+                .ok_or_else(|| format!("BD-E-OUTPUT-PATH: cannot resolve {}", path.display()))?;
+            let name = path
+                .file_name()
+                .ok_or_else(|| format!("BD-E-OUTPUT-PATH: cannot resolve {}", path.display()))?;
+            Ok(resolved(parent)?.join(name))
+        }
+        Err(error) => Err(format!(
+            "BD-E-OUTPUT-PATH: cannot resolve {}: {error}",
+            path.display()
+        )),
+    }
+}
+
+pub fn admit(inputs: &[PathBuf], outputs: &[(&str, PathBuf)]) -> Result<()> {
+    let aliases = |a: &Path, b: &Path| -> Result<bool> {
+        if resolved(a)? == resolved(b)? {
+            return Ok(true);
+        }
+        Ok(match (fs::metadata(a), fs::metadata(b)) {
+            (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
+            _ => false,
+        })
+    };
+    for (index, (role, path)) in outputs.iter().enumerate() {
+        for input in inputs {
+            if aliases(path, input)? {
+                return Err(format!(
+                    "BD-E-OUTPUT-PATH: {role} destination {} aliases input {}",
+                    path.display(),
+                    input.display()
+                ));
+            }
+        }
+        for (other_role, other) in &outputs[..index] {
+            if aliases(path, other)? {
+                return Err(format!(
+                    "BD-E-OUTPUT-PATH: {role} destination {} aliases {other_role} destination {}",
+                    path.display(),
+                    other.display()
+                ));
+            }
+        }
+    }
+    Ok(())
+}

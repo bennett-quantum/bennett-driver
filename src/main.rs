@@ -2,6 +2,7 @@ mod arith;
 mod classifier;
 mod json;
 mod native;
+mod output_paths;
 mod process;
 mod report;
 use json::{Json, obj, strings};
@@ -466,6 +467,42 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
                 ));
             }
         };
+        // opt may infer a missing DataLayout from a triple. Inspect the input
+        // before any optimisation/target-machine defaults can fill it in.
+        let declared = if module.extension().and_then(|e| e.to_str()) == Some("ll") {
+            read(&module)?
+        } else {
+            b.run(
+                "input-target",
+                vec![
+                    tool(m, "llvm-dis"),
+                    module.display().to_string(),
+                    "-o".into(),
+                    "-".into(),
+                ],
+                None,
+            )
+            .map_err(|error| {
+                format!(
+                    "BD-E-VERSION: cannot read target metadata in {}: {error}",
+                    module.display()
+                )
+            })?
+        };
+        for field in ["target triple", "target datalayout"] {
+            let present = declared.lines().map(str::trim_start).any(|line| {
+                line.starts_with(field)
+                    && line.split_once('=').is_some_and(|(_, value)| {
+                        !value.trim().is_empty() && value.trim() != "\"\""
+                    })
+            });
+            if !present {
+                return Err(format!(
+                    "BD-E-VERSION: missing {field} in {}; every input must declare its target before linking",
+                    module.display()
+                ));
+            }
+        }
         let ir = b.out.join(format!("input-{i}.ll"));
         b.run(
             "input-verify",
@@ -491,15 +528,16 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
             ("target datalayout", &mut layout),
             ("target triple", &mut triple),
         ] {
-            if let Some(line) = text.lines().find(|l| l.starts_with(key)) {
-                if previous.as_ref().is_some_and(|s| s != line) {
-                    return Err(format!(
-                        "BD-E-VERSION: mismatched {key} in {}: {line}",
-                        module.display()
-                    ));
-                }
-                *previous = Some(line.to_string());
+            let line = text.lines().find(|line| line.starts_with(key)).ok_or_else(|| {
+                format!("BD-E-VERSION: missing {key} in {}; every input must declare its target before linking", module.display())
+            })?;
+            if previous.as_ref().is_some_and(|s| s != line) {
+                return Err(format!(
+                    "BD-E-VERSION: mismatched {key} in {}: {line}",
+                    module.display()
+                ));
             }
+            *previous = Some(line.to_string());
         }
         modules.push(module.display().to_string());
     }

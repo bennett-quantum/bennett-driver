@@ -1,5 +1,5 @@
 import os,json,pathlib,subprocess,sys,tempfile
-from toolchain import flags
+from toolchain import flags, target_headers
 root=pathlib.Path(__file__).resolve().parents[1]
 def run(args):
     p=subprocess.run(list(map(str,args)),capture_output=True)
@@ -7,7 +7,7 @@ def run(args):
     return p.stdout
 with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='inputs-') as temp:
     d=pathlib.Path(temp)
-    header='target triple = "x86_64-unknown-linux-gnu"\n'
+    header=target_headers(23)
     a=d/'a.ll';b=d/'b.ll'
     a.write_text(header+'''declare ptr @__bennett_qalloc(i64, i64)
 declare void @__bennett_qfree(ptr)

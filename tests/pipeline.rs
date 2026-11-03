@@ -33,3 +33,21 @@ fn version_mismatch_is_loud() {
     assert!(String::from_utf8_lossy(&result.stderr).contains("BD-E-VERSION"));
     let _ = fs::remove_dir_all(out);
 }
+
+#[test]
+fn missing_published_fixture_names_its_dependency() {
+    let missing = root().join(format!(".tmp/absent-rung2-fixture-{}", std::process::id()));
+    assert!(!missing.exists());
+    let result = Command::new("python3")
+        .arg(root().join("tests/integration.py"))
+        .arg(env!("CARGO_BIN_EXE_bennett-driver"))
+        .arg("--check-inputs")
+        .env("BENNETT_RUNG2_EVIDENCE", missing)
+        .output()
+        .unwrap();
+    assert!(!result.status.success());
+    let error = String::from_utf8_lossy(&result.stderr);
+    assert!(error.contains("BD-E-TEST-FIXTURE"), "{error}");
+    assert!(error.contains("bennett-driver-3j4"), "{error}");
+    assert!(error.contains("no live sibling .tmp fallback"), "{error}");
+}
