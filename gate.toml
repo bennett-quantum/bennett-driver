@@ -1,6 +1,4 @@
 # Push-gate pins (bennett/tools/gate_README.md). Siblings resolve only to these commits.
-# Not yet the hook: bennett-driver-3j4 (tests/hook.py and hook.rs assert the old hook; tests/integration.py reads
-# untracked rung-2 evidence under the live bennett-conformance/.tmp and a plugin .so by frozen digest).
 schema = 1
 repo = "bennett-driver"
 tool_sha = "01c0314c9aaa4a37313ab530da2134efafe9cbd5"
@@ -8,6 +6,8 @@ timeout_s = 7200
 
 [env]
 CARGO_TARGET_DIR = "{root}/.tmp/gate-target"
+BENNETT_DRIVER_NATIVE_PLUGIN_ROOT = "{sibling:bennett-plugin-native-comparison}"
+BENNETT_DRIVER_MODERN_PLUGIN_ROOT = "{sibling:bennett-plugin-native-comparison}"
 
 [[check]]
 name = "cargo test"
@@ -18,12 +18,26 @@ sha = "b077ae2a22e73b2321dcfe2fccede885f47b8d89"
 note = "conformance origin/main (ladder rung-2 and rung-3 fixtures)"
 
 [siblings."bennett-runtimes"]
-sha = "ec520323cbfc8672c0403429eb77aab6cbecf6a3"
-note = "runtimes origin/main: dist publication and scripts/native-check"
+sha = "248e468ca505c684bbf254e52eb8148f1e530c83"
+note = "published native-check adapter and matching runtime distribution"
+
+[siblings."bennett-runtimes".files]
+"scripts/native-check" = "bb11d8498a8403a415a77910193302b00bb1978d6ee24c0079bab5aa69ab5c2e"
 
 [siblings."bennett-arith"]
 sha = "aab308f8305e92d4946d1ea302af1ea196a27bb3"
 note = "arith origin/main: dist publication"
+
+# Frozen rung-2 evidence names these library bytes independently of current APIs.
+[siblings."bennett-runtimes-rung2"]
+repo = "bennett-runtimes"
+sha = "6808622d560b2e301c635c205eecde3d932b6df5"
+note = "runtime publication bound by the historical driver regression"
+
+[siblings."bennett-arith-rung2"]
+repo = "bennett-arith"
+sha = "249e6192b95c6dbbb875510c32a677ba113e9af5"
+note = "arithmetic publication bound by the historical driver regression"
 
 [siblings."bennett-plugin"]
 sha = "157d4bd1fab98afed8579b2367f26d1d742b0173"
@@ -33,3 +47,15 @@ note = "plugin origin/main; the commit the frozen rung-2 evidence was built from
 name = "plugin (LLVM 18 and 23)"
 argv = ["python3", "scripts/build"]
 outputs = ["build/libbennett-plugin-18.so", "build/libbennett-plugin-23.so"]
+
+# The frozen rung-2 producer stays separate from the native adapter publication.
+[siblings."bennett-plugin-native-comparison"]
+repo = "bennett-plugin"
+sha = "0ac61808d6cb24406489c95824220170875b93a5"
+note = "published selected-entry native prepare/check/finalise adapter"
+
+[[siblings."bennett-plugin-native-comparison".build]]
+name = "native comparison adapter (LLVM 18 and 23)"
+argv = ["python3", "scripts/build"]
+outputs = ["build/libbennett-plugin-18.so", "build/libbennett-plugin-23.so"]
+needs = ["bennett-runtimes", "bennett-arith"]
