@@ -21,7 +21,7 @@ with (nullcontext(evidence) if evidence else tempfile.TemporaryDirectory(dir=roo
    read=' %v = load i32, ptr @counter\n %bad = icmp ne i32 %v, 7\n' if kind=='global' else ' store i8 19, ptr @region\n %v = load i8, ptr @region\n %bad = icmp ne i8 %v, 19\n'
    if kind=='interface':read=' %v = load i8, ptr @region\n %bad = icmp ne i8 %v, 7\n'
    source=d/f'{major}-{kind}.ll'
-   source.write_text(target_headers(major)+declaration+'define i32 @main() {\n'+read+f' %addr = ptrtoint ptr @{symbol} to i64\n %wrong = icmp ne i64 %addr, {address}\n %any = or i1 %bad, %wrong\n %r = zext i1 %any to i32\n ret i32 %r\n}}\n')
+   source.write_text(target_headers(major)+declaration+'declare ptr @__bennett_nz_alloc(i64)\ndeclare void @__bennett_nz_free(ptr)\ndefine i32 @main() {\n %heap = call ptr @__bennett_nz_alloc(i64 1)\n store i8 3, ptr %heap\n call void @__bennett_nz_free(ptr %heap)\n'+read+f' %addr = ptrtoint ptr @{symbol} to i64\n %wrong = icmp ne i64 %addr, {address}\n %any = or i1 %bad, %wrong\n %r = zext i1 %any to i32\n ret i32 %r\n}}\n')
    digest=hashlib.sha256(source.read_bytes()).hexdigest()
    binding=dict(base=address,size=size,native_symbol=symbol,llvm_name=symbol,alignment=4 if kind=='global' else 8)
    layout=dict(null_size=4096,ptr_width=64,heap_base=69632,heap_limit_max=1048576,globals={},interface_regions={},materialised_sha256=digest)
