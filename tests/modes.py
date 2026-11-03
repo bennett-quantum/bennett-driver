@@ -1,5 +1,5 @@
 """Published controls reach their backend, with real closed-unit processing."""
-import hashlib, json, pathlib, subprocess, sys, tempfile
+import json, pathlib, subprocess, sys, tempfile
 from toolchain import flags, target_headers
 root = pathlib.Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='modes-') as temp:
@@ -32,8 +32,6 @@ define i32 @top() {
 
         # The old immutable plugin does not register these published controls.
         # A backend dependency is explicit; parsing alone is never a pass.
-        snapshot = d/'snapshot.json'
-        snapshot.write_text('{"globals":{"g":"07"}}\n')
         for label, options in [('oracle', ['--bennett-oracle=top', '--bennett-bind=0:in:8',
                 '--bennett-bind=1:arg:8:3', '--bennett-dev=clock:64', '--bennett-dev=entropy:8', '--bennett-payload=return']),
             ('platform', ['--bennett-platform=riscv64-bennett-virt']),
@@ -44,7 +42,7 @@ define i32 @top() {
             manifest = json.loads((out/'manifest.json').read_text())
             for option in options:
                 assert option in manifest['options'], (label,manifest['options'])
-            if label in ('oracle', 'snapshot', 'vscale'):
+            if label == 'oracle':
                 assert not any(c['stage'] in ('postlink', 'plugin') for c in manifest['commands']), label
                 assert b'before post-link optimisation' in result.stderr
             else:
@@ -53,6 +51,4 @@ define i32 @top() {
                 for option in options:
                     assert option.lstrip('-') in [a.lstrip('-') for a in command['argv']], (label,command['argv'])
             assert not (out/'build.json').exists(), 'unavailable mode must not certify an unchanged build'
-            if label == 'snapshot':
-                assert manifest['snapshot']['sha256'] == hashlib.sha256(snapshot.read_bytes()).hexdigest()
     print('Both majors: closed-unit output equals whole-program, all requested controls preserved, unavailable backend is blocked without a build certificate')

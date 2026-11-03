@@ -19,7 +19,7 @@ use std::{
 type Result<T> = std::result::Result<T, String>;
 const DIALECT: &str = "0.2.13";
 const ISA: &str = "0.8";
-const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.13 (historical 0.2.10 accepted explicitly) -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8,\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n --bennett-emit=process-bitcode (preparation stage; manifest status prepared)\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-comparison-entry=SYMBOL --bennett-comparison-launch-record=FILE\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n --bennett-classifier-input=FILE (original C, UBSan-minimal diagnostic)\n Plain O2 comparison and O0 diagnostic; full ASan requires its freestanding runtime publication\n";
+const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.13 (historical 0.2.10 accepted explicitly) -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8,\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n --bennett-snapshot=FILE --bennett-class=NAME --bennett-vscale=V\n -bennett-closed-unit --bennett-oracle=SYMBOL (requires callable wrapper handoff)\n --bennett-emit=process-bitcode (preparation stage; manifest status prepared)\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-comparison-entry=SYMBOL --bennett-comparison-launch-record=FILE\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n --bennett-classifier-input=FILE (original C, UBSan-minimal diagnostic)\n Plain O2 comparison and O0 diagnostic; full ASan requires its freestanding runtime publication\n";
 #[derive(Debug)]
 struct Options {
     values: BTreeMap<String, String>,
@@ -659,7 +659,7 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
                 .is_some_and(|name| name.starts_with("__bennett_"))
         });
     }
-    let modules = mode_preparation::prepare(o, b, m, &modules)?;
+    let modules = mode_preparation::prepare(o, b, m, &modules, mode_preparation::Phase::Source)?;
     let device_mode = process_entry
         || ["bennett-oracle", "bennett-platform"]
             .iter()
@@ -668,9 +668,8 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
         native_host::build(o, b, m, &modules, pipeline)?;
         return finalise_build(b);
     }
-    // These transforms must precede LTO: it can delete an internal oracle
-    // root, fold old global initializers, or use the old scalable-vector bounds.
-    // Merely registering a late plugin option cannot establish that ordering.
+    // Oracle synthesis must preserve an internal program root before LTO and
+    // establish the callable register ownership; a late flag cannot restore it.
     let preparation = ["bennett-oracle"]
         .into_iter()
         .filter(|key| o.get(key).is_some())
@@ -728,15 +727,24 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
             &[&runtime, &arith],
         )?;
     }
+    let mut prepared_path = b.out.join("process-prepared.bc");
+    if o.get("bennett-vscale").is_some() {
+        let modules = mode_preparation::prepare(
+            o,
+            b,
+            m,
+            &[linked.display().to_string()],
+            mode_preparation::Phase::Linked,
+        )?;
+        prepared_path = PathBuf::from(&modules[0]);
+        fs::copy(&prepared_path, &linked).map_err(|e| format!("mode prepared module: {e}"))?;
+    }
     if o.get("bennett-emit") == Some("process-bitcode") {
         b.record
             .set("completion", "process-bitcode preparation stage".into());
         b.record.set(
             "outputs",
-            obj([(
-                "process_prepared",
-                artifact(&b.out.join("process-prepared.bc"), None)?,
-            )]),
+            obj([("process_prepared", artifact(&prepared_path, None)?)]),
         );
         return b.save("prepared");
     }

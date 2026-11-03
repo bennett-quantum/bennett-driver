@@ -30,6 +30,17 @@ define i32 @main() { %v=load i8,ptr @g
         build=json.loads((out/'build.json').read_text())
         assert build['snapshot_sha256']==hashlib.sha256(snapshot.read_bytes()).hexdigest()
         assert build['completion']=='native-only' and not build['plugin_builds']
+        for label,body,image in [
+            ('common','@g = common global i8 0, align 1\ndefine i32 @main() { %v=load i8,ptr @g\n %n=zext i8 %v to i32\n ret i32 %n }','07'),
+            ('alias','%S = type {i8,i32}\n@g = global %S zeroinitializer, align 1\n@a = alias %S,ptr @g\ndefine i32 @main() { %p=getelementptr %S,ptr @a,i32 0,i32 1\n %v=load i32,ptr %p,align 1\n ret i32 %v }','0000000007000000'),
+            ('pointer','@g = global ptr null, align 1\ndefine i32 @main() { %p=load ptr,ptr @g,align 1\n %n=ptrtoint ptr %p to i32\n ret i32 %n }','0700000000000000')]:
+            variant=d/f'{m}-{label}.ll';variant.write_text(target_headers(m)+body+'\n')
+            snapshot.write_text(json.dumps({'schema':'bennett-driver-snapshot-1','globals':{'g':image}}))
+            variantout=d/f'{m}-{label}'
+            run([*base,f'--bennett-out={variantout}',f'--bennett-snapshot={snapshot}',variant])
+            assert subprocess.run([variantout/'native-host'],timeout=10).returncode==7
+            prepared=run([f'/usr/lib/llvm-{m}/bin/llvm-dis',variantout/'source-mode-prepared.bc','-o','-']).decode()
+            assert 'align 1' in next(line for line in prepared.splitlines() if line.startswith('@g =')),prepared
         for label,values in [('unknown',{'absent':'07'}),('extent',{'g':'0700'})]:
             snapshot.write_text(json.dumps({'schema':'bennett-driver-snapshot-1','globals':values}))
             refused=d/f'{m}-{label}'
@@ -60,4 +71,26 @@ define i64 @top() {
         build=json.loads((out/'build.json').read_text())
         stages=[c['stage'] for c in build['commands']]
         assert stages.index('mode-preparation')<stages.index('postlink')<stages.index('plugin')
+        for label,requested,fixed,expected in [('three',3,None,3),('attribute',2,4,4)]:
+            text=source.read_text()
+            if fixed:
+                text=text.replace('define i64 @top() {', 'define i64 @top() #0 {')+f'attributes #0 = {{ vscale_range({fixed},{fixed}) }}\n'
+            variant=d/f'{m}-{label}.ll';variant.write_text(text)
+            out=d/f'{m}-{label}'
+            run([*base,f'--bennett-out={out}',f'--bennett-vscale={requested}',variant])
+            report=json.loads((out/'mode-preparation.json').read_text())
+            assert report['vscale']==expected,report
+            post=run([f'/usr/lib/llvm-{m}/bin/llvm-dis',out/'postlink.bc','-o','-']).decode()
+            assert f'ret i64 {expected}' in post,post
+        vector=d/f'{m}-vector-address.ll'
+        vector.write_text(source.read_text().replace(' %v=call i64 @llvm.vscale.i64()\n ret i64 %v', ''' %storage=alloca <vscale x 4 x i8>
+ %end=getelementptr <vscale x 4 x i8>,ptr %storage,i64 1
+ %first=ptrtoint ptr %storage to i64
+ %last=ptrtoint ptr %end to i64
+ %size=sub i64 %last,%first
+ ret i64 %size'''))
+        vectorout=d/f'{m}-vector-address'
+        p=subprocess.run([*base,f'--bennett-out={vectorout}','--bennett-vscale=3',str(vector)],capture_output=True,timeout=120)
+        assert p.returncode and b'BD-B-MODE-BACKEND' in p.stderr,p.stderr
+        assert not (vectorout/'postlink.bc').exists() and not (vectorout/'build.json').exists()
     print('Both majors: exact snapshot native value7, bad images rejected, ordered unique classes and fixed vscale2 before LTO')

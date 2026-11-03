@@ -1,13 +1,16 @@
 """Configured register classes must be consumed by real production lowering."""
 import hashlib, json, os, pathlib, subprocess, sys, tempfile
 from toolchain import flags, target_headers
+from contextlib import nullcontext
 root=pathlib.Path(__file__).resolve().parents[1]
 plugin_root=pathlib.Path(os.environ.get('BENNETT_DRIVER_MODERN_PLUGIN_ROOT') or root.parent/'bennett-plugin')
 def run(args):
     p=subprocess.run(list(map(str,args)),capture_output=True,timeout=120)
     assert p.returncode==0,p.stderr.decode()
     return p.stdout
-with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='preparation-') as temp:
+evidence=os.environ.get('BENNETT_DRIVER_CLASS_EVIDENCE')
+if evidence:pathlib.Path(evidence).mkdir(parents=True,exist_ok=False)
+with (nullcontext(evidence) if evidence else tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='configured-classes-')) as temp:
     d=pathlib.Path(temp)
     for m in (18,23):
         plugin=plugin_root/f'build/libbennett-plugin-{m}.so'

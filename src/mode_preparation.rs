@@ -1,6 +1,18 @@
 use super::*;
 
-pub fn prepare(o: &Options, b: &mut Build, major: u32, modules: &[String]) -> Result<Vec<String>> {
+pub enum Phase {
+    Source,
+    Linked,
+}
+
+pub fn prepare(
+    o: &Options,
+    b: &mut Build,
+    major: u32,
+    modules: &[String],
+    phase: Phase,
+) -> Result<Vec<String>> {
+    let include_vscale = matches!(phase, Phase::Linked);
     let classes = o
         .plugin_args
         .iter()
@@ -9,7 +21,7 @@ pub fn prepare(o: &Options, b: &mut Build, major: u32, modules: &[String]) -> Re
         .collect::<Vec<_>>();
     if classes.is_empty()
         && o.get("bennett-snapshot").is_none()
-        && o.get("bennett-vscale").is_none()
+        && (!include_vscale || o.get("bennett-vscale").is_none())
     {
         return Ok(modules.to_vec());
     }
@@ -21,21 +33,29 @@ pub fn prepare(o: &Options, b: &mut Build, major: u32, modules: &[String]) -> Re
     )?;
     let mut request = obj([("classes", strings(&classes))]);
     for key in ["snapshot", "vscale"] {
+        if key == "vscale" && !include_vscale {
+            continue;
+        }
         if let Some(value) = o.get(&format!("bennett-{key}")) {
             request.set(key, value.into());
         }
     }
-    let config = b.out.join("mode-request.json");
+    let prefix = if include_vscale {
+        "mode"
+    } else {
+        "source-mode"
+    };
+    let config = b.out.join(format!("{prefix}-request.json"));
     write(&config, request.encode())?;
-    let input = b.out.join("mode-input.bc");
-    let output = b.out.join("mode-prepared.bc");
-    let report = b.out.join("mode-preparation.json");
+    let input = b.out.join(format!("{prefix}-input.bc"));
+    let output = b.out.join(format!("{prefix}-prepared.bc"));
+    let report = b.out.join(format!("{prefix}-preparation.json"));
     let mut link = vec![super::tool(major, "llvm-link")];
     link.extend_from_slice(modules);
     link.extend(["-o".into(), input.display().to_string()]);
-    b.run("mode-input-link", link, None)?;
+    b.run(&format!("{prefix}-input-link"), link, None)?;
     b.run(
-        "mode-preparation",
+        &format!("{prefix}-preparation"),
         vec![
             tool.display().to_string(),
             input.display().to_string(),
@@ -46,7 +66,11 @@ pub fn prepare(o: &Options, b: &mut Build, major: u32, modules: &[String]) -> Re
         None,
     )?;
     b.record.set(
-        "mode_preparation",
+        if include_vscale {
+            "mode_preparation"
+        } else {
+            "source_mode_preparation"
+        },
         obj([
             ("request", artifact(&config, None)?),
             ("tool", artifact(&tool, None)?),
