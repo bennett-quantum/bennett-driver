@@ -1,6 +1,7 @@
 """Process-entry component checks; native diagnostics do not establish R acceptance."""
 import hashlib, json, os, pathlib, re, subprocess, sys, tempfile
 from contextlib import nullcontext
+from toolchain import flags
 
 root=pathlib.Path(__file__).resolve().parents[1]
 ws=root.parent
@@ -44,7 +45,7 @@ with (nullcontext(evidence) if evidence else tempfile.TemporaryDirectory(dir=roo
         sysroot=ws/f'bennett-runtimes/dist/llvm{major}/musl-sysroot'
         c=d/f'program-{major}.c';c.write_text(source)
         out=d/f'production-{major}'
-        command=[exe,f'--bennett-llvm-major={major}','-bennett-dialect=0.2.10',
+        command=[exe,*flags(major),f'--bennett-llvm-major={major}','-bennett-dialect=0.2.10',
             '--bennett-tier=reversible','--bennett-entry=program',f'--bennett-out={out}',
             '--bennett-emit=process-bitcode',
             f'--bennett-sysroot={sysroot}','--bennett-analysis-budget-ms=300000',
@@ -84,7 +85,8 @@ with (nullcontext(evidence) if evidence else tempfile.TemporaryDirectory(dir=roo
         run([llvm/'llvm-link',missing,wrong_bc,'-o',wrong])
         for label,runtime in [('missing',missing),('wrong-type',wrong)]:
             refused=d/f'{label}-{major}'
-            args=[f'--bennett-out={refused}' if str(x).startswith('--bennett-out=') else str(x) for x in command]
+            args=[f'--bennett-out={refused}' if str(x).startswith('--bennett-out=') else str(x)
+                for x in command if not str(x).startswith(('--bennett-runtimes=', '--bennett-runtimes-sha256='))]
             args.insert(1,f'--bennett-runtimes={runtime}')
             p=subprocess.run(['timeout','120',*args],capture_output=True,timeout=130)
             assert p.returncode and b'BD-E-PROCESS' in p.stderr and b'__bennett_rt_prepare_process' in p.stderr,(label,p.stderr)

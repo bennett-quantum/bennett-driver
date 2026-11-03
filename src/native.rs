@@ -595,7 +595,7 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         ("code","BD-E-NATIVE-SANITIZER".into()),("stage","native-sanitizer".into()),
         ("function","<whole-program>".into()),("value_or_call","<instrumentation>".into()),
         ("constraint","§17.7 diagnostic instrumentation must not import hosted sanitizer/libc/libm".into()),
-        ("required_change","brt-nuu.2: publish a real freestanding ASan closure or specified checked memory adapter".into()),
+        ("required_change","Publish a real freestanding ASan closure or specified checked memory adapter".into()),
         ("blocked_on",strings(&["brt-nuu.2".into()])),
         ("reason","Published UBSan-minimal source classifier is separate; general memory detection remains required".into())]));
     b.record
@@ -606,14 +606,14 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
     )?;
     if !residual.is_empty() {
         return Err(format!(
-            "BD-E-NATIVE-MARKERS: §17.7 actual materialised device still calls {}; bp-xyn must lower host-side markers; no fake definitions. {}",
+            "BD-E-NATIVE-MARKERS: §17.7 actual materialised device still calls {}; select the launch-record-verified marker-free comparison adapter; no fake definitions. {}",
             residual.join(", "),
             first_error.unwrap_or_default()
         ));
     }
     if let Some(e) = first_error {
         return Err(format!(
-            "BD-E-NATIVE-LINK: §17.7/§19.5 strict comparison cannot link; no host libc/libm fallback. See native link diagnostics; sanitizer row separately blocked on brt-nuu.2. {e}"
+            "BD-E-NATIVE-LINK: §17.7/§19.5 strict comparison cannot link; no host libc/libm fallback. See native link diagnostics and the separate sanitizer receipt. {e}"
         ));
     }
     classifier::build(o, b, m, &arith)?;

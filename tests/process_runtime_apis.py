@@ -4,6 +4,7 @@ The private state profile exists, but the public APIs are a separate runtime
 publication obligation. This test must remain red while either API is absent.
 """
 import json, pathlib, subprocess, sys, tempfile
+from toolchain import flags
 root=pathlib.Path(__file__).resolve().parents[1]
 ws=root.parent
 def run(args):
@@ -29,7 +30,7 @@ int main(void) {
 }
 ''')
         prepared=d/f'prepared-{major}'
-        run([sys.argv[1],f'--bennett-llvm-major={major}','-bennett-dialect=0.2.10',
+        run([sys.argv[1],*flags(major),f'--bennett-llvm-major={major}','-bennett-dialect=0.2.10',
             '--bennett-tier=reversible','--bennett-entry=main','--bennett-emit=process-bitcode',
             f'--bennett-out={prepared}',f'--bennett-sysroot={ws}/bennett-runtimes/dist/llvm{major}/musl-sysroot',source])
         # Fixed-IR codegen maps end at 0x11020 (18) and 0x11050 (23);

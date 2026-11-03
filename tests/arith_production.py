@@ -1,6 +1,7 @@
 """Concrete instance generation must precede real production normalisation."""
 import hashlib,json,os,pathlib,subprocess,sys,tempfile
 from contextlib import nullcontext
+from toolchain import flags
 root=pathlib.Path(__file__).resolve().parents[1]
 def run(args,limit=240):
  p=subprocess.run(list(map(str,args)),capture_output=True,timeout=limit)
@@ -28,7 +29,7 @@ define i32 @top() {
 }
 ''')
   out=d/f'out-{major}'
-  args=[sys.argv[1],f'--bennett-llvm-major={major}','-bennett-dialect=0.2.10',f'--bennett-out={out}',
+  args=[sys.argv[1],*flags(major,plugin=not bool(os.environ.get('BENNETT_DRIVER_ARITH_PLUGIN_DIR'))),f'--bennett-llvm-major={major}','-bennett-dialect=0.2.10',f'--bennett-out={out}',
     '--bennett-analysis-budget-ms=90000','-bennett-budget-default=10000000,1048576,65536,256,65536',source]
   if os.environ.get('BENNETT_DRIVER_ARITH_PLUGIN_DIR'):
    plugin=pathlib.Path(os.environ['BENNETT_DRIVER_ARITH_PLUGIN_DIR'])/f'libbennett-plugin-{major}.so'

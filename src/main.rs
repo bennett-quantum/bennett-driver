@@ -1,6 +1,8 @@
 mod arith;
 mod classifier;
 mod json;
+mod llvm_utility;
+mod mode_preparation;
 mod native;
 mod native_adapter;
 mod native_host;
@@ -17,7 +19,7 @@ use std::{
 type Result<T> = std::result::Result<T, String>;
 const DIALECT: &str = "0.2.13";
 const ISA: &str = "0.8";
-const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.13 (historical 0.2.10 accepted explicitly) -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8,\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n --bennett-emit=process-bitcode (preparation stage; manifest status prepared)\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-comparison-entry=SYMBOL --bennett-comparison-launch-record=FILE\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n --bennett-classifier-input=FILE (original C, UBSan-minimal diagnostic)\n Plain O2 comparison and O0 diagnostic; full ASan blocked on brt-nuu.2\n";
+const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.13 (historical 0.2.10 accepted explicitly) -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8,\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n --bennett-emit=process-bitcode (preparation stage; manifest status prepared)\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-comparison-entry=SYMBOL --bennett-comparison-launch-record=FILE\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n --bennett-classifier-input=FILE (original C, UBSan-minimal diagnostic)\n Plain O2 comparison and O0 diagnostic; full ASan requires its freestanding runtime publication\n";
 #[derive(Debug)]
 struct Options {
     values: BTreeMap<String, String>,
@@ -256,10 +258,10 @@ fn headless(cmd: &mut Command) {
     }
     cmd.env(
         "TMPDIR",
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .join("bennett-driver/.tmp"),
+        env::var_os("TMPDIR")
+            .filter(|path| !path.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join(".tmp")),
     );
 }
 fn sha(path: &Path) -> Result<String> {
@@ -426,7 +428,11 @@ fn admit_dialect_flag(ir: &str, expected: &str) -> Result<()> {
         .lines()
         .find_map(|line| line.strip_prefix("!llvm.module.flags = !{"))
     {
-        for id in flags.trim_end_matches('}').split(", ") {
+        for id in flags
+            .trim_end_matches('}')
+            .split(", ")
+            .filter(|id| !id.is_empty())
+        {
             let prefix = format!("{id} = ");
             let tuple = ir
                 .lines()
@@ -653,8 +659,9 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
                 .is_some_and(|name| name.starts_with("__bennett_"))
         });
     }
+    let modules = mode_preparation::prepare(o, b, m, &modules)?;
     let device_mode = process_entry
-        || ["bennett-oracle", "bennett-platform", "bennett-snapshot"]
+        || ["bennett-oracle", "bennett-platform"]
             .iter()
             .any(|key| o.get(key).is_some());
     if !device_mode && !reserved_symbols {
@@ -664,7 +671,7 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
     // These transforms must precede LTO: it can delete an internal oracle
     // root, fold old global initializers, or use the old scalable-vector bounds.
     // Merely registering a late plugin option cannot establish that ordering.
-    let preparation = ["bennett-oracle", "bennett-snapshot", "bennett-vscale"]
+    let preparation = ["bennett-oracle"]
         .into_iter()
         .filter(|key| o.get(key).is_some())
         .collect::<Vec<_>>();
@@ -753,6 +760,11 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
         format!("-bennett-out={}", b.out.display()),
     ];
     pass.extend(o.plugin_args.clone());
+    pass.retain(|arg| {
+        !["-bennett-class=", "-bennett-vscale=", "-bennett-snapshot="]
+            .iter()
+            .any(|prefix| arg.starts_with(prefix))
+    });
     pass.extend(["-disable-output".into(), post.display().to_string()]);
     let blocked = match b.run("plugin", pass, Some(&arith)) {
         Ok(_) => None,

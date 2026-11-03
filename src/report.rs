@@ -2,18 +2,22 @@ use super::*;
 /// Driver implementation refusals are distinct from the four normative ISA
 /// blockers. Keep the original diagnostics; never relabel a missing mode as ISA7.
 pub fn failure(out: Option<&Path>, error: &str, stage: &str, args: &[String]) -> Result<()> {
+    let native_host = stage.starts_with("native-host-") && stage != "native-host-imports";
+    let comparison = stage.starts_with("comparison")
+        || (stage.starts_with("native-") && !native_host)
+        || stage.starts_with("classifier");
     let code = error
         .split(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
         .find(|s| s.starts_with("BD-E-") || s.starts_with("BD-B-"))
-        .unwrap_or(
-            if stage.starts_with("native") || error.contains("comparison") {
-                "DRIVER-NATIVE-LINK"
-            } else if error.contains("plugin") {
-                "DRIVER-PLUGIN-REFUSAL"
-            } else {
-                "DRIVER-INPUT"
-            },
-        );
+        .unwrap_or(if native_host {
+            "DRIVER-NATIVE-HOST"
+        } else if comparison {
+            "DRIVER-NATIVE-LINK"
+        } else if stage == "plugin" {
+            "DRIVER-PLUGIN-REFUSAL"
+        } else {
+            "DRIVER-INPUT"
+        });
     let (constraint, change) = if code == "BD-B-ISA7" || error.contains("BLK-5") {
         (
             "ISA 0.8 R generic trap cannot report typed faults while retaining reversible prefix history; BLK-5 (ISA-7)",
@@ -22,27 +26,32 @@ pub fn failure(out: Option<&Path>, error: &str, stage: &str, args: &[String]) ->
     } else if error.contains("bennett-tier") && error.contains("Unknown command line") {
         (
             "Plugin does not register §19.2 tier/entry options; this is an implementation dependency, not a musl or typed-fault verdict",
-            "Plugin must implement whole-program R entry, CC bennett.argv argc/argv/envp launch and §25.1 reports; bp-xkg",
+            "Plugin must implement whole-program R entry, CC bennett.argv argc/argv/envp launch and §25.1 reports",
         )
     } else if code == "BD-E-NATIVE-MARKERS" {
         (
             "§17.7 actual plugin-materialised device retains host-side quantum/effect marker calls",
-            "bp-xyn: publish marker-free materialised comparison variants; never define fake markers or substitute the source module",
+            "Select the launch-record-verified marker-free materialised comparison adapter; never define fake markers or substitute the source module",
         )
     } else if code == "BD-E-NATIVE-LAYOUT" || error.contains("BD-E-NATIVE-LAYOUT") {
         (
             "§19.5 native and device data/global/function/heap/arena/interface addresses must agree",
-            "bennett-driver-cyg.3 / bp-xyn: supply the resolved shared comparison layout and LLVM symbol map; never infer it from __bennett_rt_blk.<f>",
+            "Supply the resolved shared comparison layout and LLVM symbol map; never infer it from __bennett_rt_blk.<f>",
         )
     } else if code == "BD-E-VERSION" {
         (
             "§19.8/19.9: same target data layout/triple, readable envelope major, exact dialect/ISA/plugin identity and requested hashes",
             "Supply matching tools, inputs and pinned libraries; never silently upgrade ISA or substitute library bytes",
         )
-    } else if error.contains("native") || error.contains("comparison") {
+    } else if native_host {
+        (
+            "§19 native host output: ordinary host startup, target ABI and native link dependencies",
+            "Inspect the recorded host compiler/linker command and its unresolved symbols or target diagnostics",
+        )
+    } else if comparison {
         (
             "§17.7/19.5: comparison must resolve the materialised module with runtimes/arith and no host libc/libm",
-            "Inspect the exact native imports/link diagnostics and resolved device layout; bp-xyn / bennett-driver-cyg.3. Full ASan/general-memory detection remains brt-nuu.2; UBSan source diagnostics are separate",
+            "Inspect the exact native imports/link diagnostics and resolved device layout; full ASan/general-memory detection and separate UBSan source diagnostics retain their own receipts",
         )
     } else {
         (

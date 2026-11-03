@@ -14,6 +14,8 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='reports-') as temp:
         ('newer',[],[]),
         ('marker',[],[]),
         ('native-marker',[],[]),
+        ('native-object',[],[]),
+        ('native-host-link',[],[]),
     ]:
         out=pathlib.Path(temp)/label
         if label=='identity':
@@ -45,6 +47,15 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='reports-') as temp:
                 f=pathlib.Path(temp)/f'mixed{n}.ll'
                 f.write_text('\n'.join(line for line in target_headers(23).splitlines() if not line.startswith('target triple'))+f'\ntarget triple = "{t}"\ndefine i32 @f{n}() {{ret i32 0}}\n')
                 inputs.append(str(f))
+        if label=='native-object':
+            src=pathlib.Path(temp)/'native-helper.c';src.write_text('int helper(void) {return 7;}\n')
+            native=src.with_suffix('.o')
+            subprocess.run(['/usr/lib/llvm-23/bin/clang','-c',src,'-o',native],capture_output=True,check=True)
+            inputs=[str(native)]
+        if label=='native-host-link':
+            src=pathlib.Path(temp)/'native-link.c'
+            src.write_text('extern int missing_native_symbol(void); int main(void) {return missing_native_symbol();}\n')
+            inputs=[str(src)]
         keys={a.split('=',1)[0] for a in extra}
         extra += [a for a in flags(18 if label=='newer' else 23, plugin=label!='identity') if a.split('=',1)[0] not in keys]
         p=subprocess.run([sys.argv[1],*(['-bennett-dialect=0.2.10'] if label!='version' else []),f'-bennett-out={out}',*extra,*inputs],capture_output=True)
@@ -57,5 +68,9 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='reports-') as temp:
             assert r[0]['code']=='BD-E-VERSION',r
         if label in ('marker','native-marker'):
             assert r[0]['code']=='BD-E-MARKER-DEFINED',r
+        if label in ('native-object','native-host-link'):
+            assert 'strict comparison' not in r[0]['constraint'] and '§17.7/19.5' not in r[0]['constraint'],r
+        if label=='native-host-link':
+            assert r[0]['code']=='DRIVER-NATIVE-HOST',r
         assert (out/'blockers.txt').is_file()
         print(label,r[0]['code'])

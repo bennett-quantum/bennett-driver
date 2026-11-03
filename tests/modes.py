@@ -36,10 +36,8 @@ define i32 @top() {
         snapshot.write_text('{"globals":{"g":"07"}}\n')
         for label, options in [('oracle', ['--bennett-oracle=top', '--bennett-bind=0:in:8',
                 '--bennett-bind=1:arg:8:3', '--bennett-dev=clock:64', '--bennett-dev=entropy:8', '--bennett-payload=return']),
-            ('snapshot', [f'--bennett-snapshot={snapshot}']),
             ('platform', ['--bennett-platform=riscv64-bennett-virt']),
-            ('class', ['--bennett-class=first', '--bennett-class=second']),
-            ('vscale', ['--bennett-vscale=2']), ('cpu', ['--bennett-cpu=generic'])]:
+            ('cpu', ['--bennett-cpu=generic'])]:
             out, result = build(label, options)
             assert result.returncode != 0 and b'BD-B-MODE-BACKEND' in result.stderr, (label,result.stderr)
             assert b'unimplemented driver option' not in result.stderr and b'empty or duplicate' not in result.stderr

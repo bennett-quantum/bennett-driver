@@ -123,7 +123,7 @@ with tempfile.TemporaryDirectory(prefix='integration-',dir=ROOT/'.tmp') as job:
         blockers = json.loads((out/'native-work/blockers.json').read_text())
         assert blockers[0]['code'] == 'BD-E-NATIVE-MARKERS', blockers
         error = blockers[0]['diagnostic']
-        assert all(s in error for s in ('__bennett_qalloc','__bennett_qfree','bp-xyn')), error
+        assert all(s in error for s in ('__bennett_qalloc','__bennett_qfree','launch-record-verified')), error
         assert 'undefined reference to `main' not in error, error
         assert '__bennett_qalloc' in link['residual_markers']
         assert '__bennett_qfree' in link['residual_markers']

@@ -15,39 +15,8 @@ pub fn prepare(
     let entry = o
         .get("bennett-entry")
         .ok_or("BD-E-PROCESS: missing entry")?;
-    let source = b.out.join("process-entry.cpp");
-    write(&source, include_str!("process-entry.cpp"))?;
-    let cache = env::var_os("TMPDIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join(".tmp"))
-        .join("bennett-driver-process");
-    fs::create_dir_all(&cache).map_err(|e| format!("process tool cache: {e}"))?;
-    let executable = cache.join(format!("prepare-{major}-{}", sha(&source)?));
-    if !executable.is_file() {
-        let flags = b.run(
-            "process-tool-flags",
-            vec![
-                tool(major, "llvm-config"),
-                "--cxxflags".into(),
-                "--ldflags".into(),
-                "--libs".into(),
-                "core".into(),
-                "irreader".into(),
-                "bitwriter".into(),
-            ],
-            None,
-        )?;
-        let temporary = b.out.join("process-entry-tool");
-        let mut args = vec![
-            tool(major, "clang++"),
-            "-O1".into(),
-            source.display().to_string(),
-        ];
-        args.extend(flags.split_whitespace().map(String::from));
-        args.extend(["-o".into(), temporary.display().to_string()]);
-        b.run("process-tool-build", args, None)?;
-        fs::rename(&temporary, &executable).map_err(|e| format!("process tool publish: {e}"))?;
-    }
+    let executable =
+        llvm_utility::compile(b, major, "process-entry", include_str!("process-entry.cpp"))?;
     let output = b.out.join("process-entry.bc");
     let report = b.out.join("process-entry.json");
     b.run(

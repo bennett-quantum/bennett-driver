@@ -32,6 +32,15 @@ int main(int argc, char **argv) {
         assert result.returncode == 0, result.stderr.decode()
         observed = run([trivialout/'native-host'])
         assert (observed.returncode, observed.stdout, observed.stderr) == (0, b'', b''), observed
+        for label,metadata in [('empty', '!llvm.module.flags = !{}\n'),
+            ('matching', '!llvm.module.flags = !{!0}\n!0 = !{i32 1, !"bennett.dialect", !"0.2.10"}\n'),
+            ('unrelated', '!unrelated = !{!0}\n!0 = !{i32 1, !"bennett.dialect", !"0.1"}\n')]:
+            llvm = d/f'flags-{major}-{label}.ll'
+            llvm.write_text(target_headers(major)+'define i32 @main() {ret i32 0}\n'+metadata)
+            flagout = d/f'flags-{major}-{label}'
+            result = run([*args[:-1], f'--bennett-out={flagout}', llvm])
+            assert result.returncode == 0, (label,result.stderr)
+            assert run([flagout/'native-host']).returncode == 0
         result = run([*args, main, helper])
         assert result.returncode == 0, result.stderr.decode()
         build = json.loads((out/'build.json').read_text())
