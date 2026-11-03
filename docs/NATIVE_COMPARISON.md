@@ -82,9 +82,9 @@ ISA object, call the report's `binding_symbol` with an owned live
 The producer's hosted CRT/VM DSO example does not certify this startup path.
 
 Resolved native ELF addresses must still be supplied to the production layout
-and verified against source correspondence. The current nonempty global/region
-mapping gap is tracked by `bennett-driver-crx`; it is an implementation
-obligation, not a source-language restriction. Full freestanding ASan remains
+and verified against source correspondence. Explicit nonempty global/region mappings are supported and audited as described
+below. Automatic complete producer/ISA/native mapping and invocation evidence
+remain part of the full comparison obligation. Full freestanding ASan remains
 `brt-nuu.2`. Component receipts do not close `cyg.3` or `i0v` while these
 native/device equality and diagnostic requirements remain unverified.
 
@@ -94,3 +94,54 @@ maps belong to the selected component/program. Neither process preparation nor
 native comparison may reset native main or claim that the device module owns
 the whole binary. No host-memory-by-reference or new launch ABI is introduced
 by this adapter.
+
+## Explicit fixed-address range mapping
+
+An explicit `--bennett-comparison-layout` adapter file can annotate its globals,
+interface regions and arena with native storage correspondence. These fields
+are **driver input annotations**; they are not written into ISA layout sections.
+For example, a four-byte source global at the resolved device address can use:
+
+```json
+{
+  "null_size": 4096, "ptr_width": 64,
+  "heap_base": 69632, "heap_limit_max": 1048576,
+  "materialised_sha256": "ACTUAL_INPUT_FILE_SHA256",
+  "globals": {
+    "G1": {
+      "base": 65536, "size": 4, "image": "G1",
+      "native_symbol": "counter", "llvm_name": "counter", "alignment": 4
+    }
+  },
+  "interface_regions": {}
+}
+```
+
+Use the selected producer report's native alias as `native_symbol` and its LLVM
+storage name as `llvm_name`. The latter defaults to the native symbol for an
+ordinary named object. For an explicitly sectioned or differently named storage
+object, `native_section` selects its actual native input section instead.
+Codegen emits individual data sections; the linker binds each declared range
+and checks its exact extent and symbol address. No guessed sequential addresses
+or private `__bennett_rt_blk.*` identities are used.
+
+`interface_regions.<entry>.<region>` annotations supply `base`, `size`,
+`native_symbol`, optional `llvm_name`/`native_section`, and `alignment`; `arena`
+uses the same object form. These describe fixed native backing objects for the
+selected comparison profile, not arbitrary host pointers or a new memory
+registration/transfer ABI. The caller must supply the true source correspondence
+and device extents. Ranges must not overlap each other or the heap. Interface
+and arena storage above the heap has a separate ELF load segment, leaving the
+actual heap mapping vacant. Source data and code also retain separate segments.
+The first-page-after-native-data heap assertion is unchanged.
+
+A nonempty map requires the exact original materialised file SHA. After linking,
+the driver independently reads the real ELF symbol table and validates every
+mapped object's address, extent, alignment and data-symbol kind. The resolved
+binding inventory and codegen object hashes are recorded. Missing/stale maps,
+wrong object extents, heap overlap and inconsistent aliases fail explicitly.
+The focused test executes mapped globals, a preserved input image and mutable
+arena at O0/O2 on both majors. This removes the old categorical nonempty-layout
+refusal; a selected producer/ISA/native full comparison still requires the real
+backend, complete source-map construction and invocation verification described
+above.

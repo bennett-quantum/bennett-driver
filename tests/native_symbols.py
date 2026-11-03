@@ -1,12 +1,15 @@
 """Resolved globals, interface buffers and arena objects keep exact ELF addresses."""
-import hashlib,json,pathlib,subprocess,sys,tempfile
+import hashlib,json,os,pathlib,subprocess,sys,tempfile
+from contextlib import nullcontext
 from toolchain import target_headers
 root=pathlib.Path(__file__).resolve().parents[1]
 def run(args):
  p=subprocess.run(list(map(str,args)),capture_output=True,timeout=120)
- assert p.returncode==0,p.stderr.decode()
+ assert p.returncode==0,(args,p.stderr.decode())
  return p.stdout
-with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='native-symbols-') as temp:
+evidence=os.environ.get('BENNETT_DRIVER_SYMBOL_EVIDENCE')
+if evidence:pathlib.Path(evidence).mkdir(parents=True,exist_ok=False)
+with (nullcontext(evidence) if evidence else tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='native-symbols-')) as temp:
  d=pathlib.Path(temp)
  for major in (18,23):
   for kind in ('global','interface','arena'):
@@ -14,7 +17,9 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='native-symbols-') as te
    size=4 if kind=='global' else 16
    address=65536 if kind=='global' else 1118208
    declaration='@counter = global i32 7, align 4\n' if kind=='global' else '@region = global [16 x i8] zeroinitializer, align 8\n'
+   if kind=='interface':declaration='@region = constant [16 x i8] c"'+r'\07'+r'\00'*15+'", align 8\n'
    read=' %v = load i32, ptr @counter\n %bad = icmp ne i32 %v, 7\n' if kind=='global' else ' store i8 19, ptr @region\n %v = load i8, ptr @region\n %bad = icmp ne i8 %v, 19\n'
+   if kind=='interface':read=' %v = load i8, ptr @region\n %bad = icmp ne i8 %v, 7\n'
    source=d/f'{major}-{kind}.ll'
    source.write_text(target_headers(major)+declaration+'define i32 @main() {\n'+read+f' %addr = ptrtoint ptr @{symbol} to i64\n %wrong = icmp ne i64 %addr, {address}\n %any = or i1 %bad, %wrong\n %r = zext i1 %any to i32\n ret i32 %r\n}}\n')
    digest=hashlib.sha256(source.read_bytes()).hexdigest()
@@ -32,7 +37,11 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='native-symbols-') as te
    resolved=json.loads((out/'resolved-layout.json').read_text())
    assert resolved['native_bindings'][0]['native_symbol']==symbol
    for name,change in [('hash',{'materialised_sha256':'0'*64}),
-     ('missing',{'globals':{'G1':dict(base=65536,size=4,image='G1')}})]:
+     ('missing',{'globals':{'G1':dict(base=65536,size=4,image='G1')}}),
+     ('extent',{'globals':{'G1':dict(binding,size=8,image='G1')}}),
+     ('alias',{'globals':{'G1':dict(binding,native_symbol='__bennett_rt_fenv',image='G1')}}),
+     ('heap',{'globals':{'G1':dict(binding,base=69632,image='G1')}}),
+     ('overlap',{'globals':{'G1':dict(binding,image='G1'),'G2':dict(binding,native_symbol='other',image='G2')}})]:
     if kind!='global':continue
     invalid=d/f'{major}-{name}.json';invalid.write_text(json.dumps(layout|change))
     p=subprocess.run([sys.argv[1],f'--bennett-llvm-major={major}',f'--bennett-materialised={source}',

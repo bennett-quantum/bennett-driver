@@ -476,6 +476,7 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
                 tool(m, "llc"),
                 format!("-{level}"),
                 "-filetype=obj".into(),
+                "-data-sections".into(),
                 // A density above 100% selects branch lowering instead of
                 // private jump tables whose readonly data differs by O-level.
                 "-jump-table-density=101".into(),
@@ -569,6 +570,19 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
             if !audit.trim().is_empty() {
                 return Err(format!("comparison unresolved imports: {audit}"));
             }
+            b.run(
+                "native-layout-audit",
+                vec![
+                    "python3".into(),
+                    "-c".into(),
+                    include_str!("../scripts/native-layout.py").into(),
+                    "--audit".into(),
+                    m.to_string(),
+                    output.display().to_string(),
+                    b.out.join("resolved-layout.json").display().to_string(),
+                ],
+                None,
+            )?;
             record.set("sha256", sha(&output)?.into());
         }
         if level == "O2" {

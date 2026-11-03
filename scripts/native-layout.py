@@ -1,62 +1,123 @@
-"""Read the device's resolved layout, never §14.9 block identities or defaults.
+"""Resolve comparison placements and audit their actual native ELF symbols.
 
-An explicit layout is a consumer adapter for already materialised modules.
-Normal builds read each plugin launch object's authoritative layout section.
+Explicit comparison-layout files may annotate device ranges with native_symbol,
+llvm_name/native_section, size and alignment. These are driver adapter fields,
+not additions to the ISA object's layout grammar.
 """
-import json, pathlib, sys
-out, device, explicit, data_arg, text_arg = sys.argv[1:]
-out, device = pathlib.Path(out), pathlib.Path(device)
+import hashlib,json,pathlib,subprocess,sys
+
 def fail(message):
-    raise ValueError('BD-E-NATIVE-LAYOUT: §19.5 '+message+'; bp-xyn / bennett-driver-cyg.3')
-def integer(value, name):
-    if type(value) is not int or not 0 <= value < 2**63: fail('invalid '+name)
+    raise ValueError('BD-E-NATIVE-LAYOUT: §19.5 '+message)
+def integer(value,name):
+    if type(value) is not int or not 0<=value<2**63:fail('invalid '+name)
     return value
-try:
-    if explicit:
-        layout=json.loads(pathlib.Path(explicit).read_text())
+def quoted(value):
+    if not isinstance(value,str) or not value or '\0' in value:fail('invalid native symbol/section')
+    return json.dumps(value,ensure_ascii=False)
+def audit(major,binary,layout):
+    bindings=json.loads(pathlib.Path(layout).read_text()).get('native_bindings',[])
+    if not bindings:return
+    argv=[f'/usr/lib/llvm-{major}/bin/llvm-nm','--defined-only','--print-size','--format=posix',binary]
+    result=subprocess.run(argv,capture_output=True,text=True,timeout=60)
+    if result.returncode:fail('cannot audit ELF symbols: '+result.stderr)
+    symbols={}
+    for line in result.stdout.splitlines():
+        if not line.strip():continue
+        fields=line.rsplit(maxsplit=3)
+        if len(fields)!=4:fail('malformed ELF symbol row: '+line)
+        name,kind,address,size=fields
+        symbols[name]=(kind,int(address,16),int(size,16))
+    for binding in bindings:
+        name=binding['native_symbol']
+        if name not in symbols:fail('native ELF lacks mapped symbol '+name)
+        kind,address,size=symbols[name]
+        if kind.upper() not in ('B','D','R','G','S','C','V') and kind!='u':fail('mapped symbol is not a data object: '+name)
+        if address!=binding['base'] or size!=binding['size'] or address%binding['alignment']:
+            fail('ELF address/size/alignment differs from resolved range '+binding['key'])
+    print(f'validated {len(bindings)} native ELF range bindings')
+
+def prepare(out,device,explicit,data_arg,text_arg):
+    out,device=pathlib.Path(out),pathlib.Path(device)
+    if explicit:layout=json.loads(pathlib.Path(explicit).read_text())
     else:
         launches=device.parent/'launches.json'
-        if not launches.is_file(): fail('missing resolved layout: supply --bennett-comparison-layout=FILE or adjacent launches.json')
+        if not launches.is_file():fail('missing resolved layout: supply --bennett-comparison-layout=FILE or adjacent launches.json')
         layouts=[]
         for entry in json.loads(launches.read_text()):
             text=(device.parent/entry['object']).read_text()
-            if '\nsection layout\n' not in text: fail('launch has no resolved layout: '+entry['object'])
+            if '\nsection layout\n' not in text:fail('launch has no resolved layout: '+entry['object'])
             layouts.append(json.loads(text.split('\nsection layout\n',1)[1].splitlines()[0]))
-        if not layouts or any(x!=layouts[0] for x in layouts): fail('device entries lack one common resolved layout')
+        if not layouts or any(x!=layouts[0] for x in layouts):fail('device entries lack one common resolved layout; select an explicit entry layout')
         layout=layouts[0]
-    if type(layout) is not dict or type(layout['globals']) is not dict or type(layout['interface_regions']) is not dict: fail('malformed global/interface layout')
+    if type(layout) is not dict or type(layout['globals']) is not dict or type(layout['interface_regions']) is not dict:fail('malformed global/interface layout')
     base=integer(layout['heap_base'],'heap_base');limit=integer(layout['heap_limit_max'],'heap_limit_max')
-    if layout['null_size']!=4096 or layout['ptr_width']!=64: fail('native closure requires LP64 and 4096-byte null region')
-    if base<4096 or base%4096 or base+limit>=2**63: fail('unaligned/overflowing heap range')
-    end=base+limit
-    unresolved_regions = bool(any(layout['interface_regions'].values()) or layout.get('arena'))
-    # H is a bound, not the occupied end. Until region-symbol transport is
-    # implemented, use H only for disjoint attempted links that will stay red.
+    if layout['null_size']!=4096 or layout['ptr_width']!=64:fail('native closure requires LP64 and 4096-byte null region')
+    if base<4096 or base%4096 or base+limit>=2**63:fail('unaligned/overflowing heap range')
+    bindings=[]
+    def bind(key,value):
+        if type(value) is not dict or not value.get('native_symbol'):fail('missing native symbol mapping for '+key)
+        start=integer(value['base'],key+' base');size=integer(value['size'],key+' size')
+        alignment=integer(value.get('alignment',1),key+' alignment')
+        if not alignment or alignment&(alignment-1) or start%alignment:fail('invalid range alignment for '+key)
+        end=start+max(1,size)
+        if start<4096 or end>=2**63 or (start<base+limit and end>base):fail('mapped range overlaps null/heap or overflows: '+key)
+        symbol=value['native_symbol'];quoted(symbol)
+        llvm=value.get('llvm_name',symbol)
+        sections=[value['native_section']] if 'native_section' in value else [prefix+llvm for prefix in ('.data.','.bss.','.rodata.')]
+        for section in sections:quoted(section)
+        bindings.append(dict(key=key,base=start,size=size,alignment=alignment,native_symbol=symbol,sections=sections))
+    for name,value in layout['globals'].items():bind('global '+name,value)
+    for owner,regions in layout['interface_regions'].items():
+        for name,value in regions.items():bind('interface '+owner+'/'+name,value)
+    if layout.get('arena'):bind('arena',layout['arena'])
+    if bindings:
+        if layout.get('materialised_sha256')!=hashlib.sha256(device.read_bytes()).hexdigest():fail('native mapping materialised SHA256 mismatch')
+        bindings.sort(key=lambda value:value['base'])
+        for left,right in zip(bindings,bindings[1:]):
+            if left['base']+max(1,left['size'])>right['base']:fail('overlapping native mappings '+left['key']+' and '+right['key'])
+        if len({x['native_symbol'] for x in bindings})!=len(bindings):fail('duplicate native mapping symbol')
+    end=max([base+limit]+[x['base']+max(1,x['size']) for x in bindings])
     if 'H' in layout:
         h=integer(layout['H'],'H')
-        if h>=63 or 2**h<end: fail('H does not cover heap')
-        if unresolved_regions: end=max(end,2**h)
+        if h>=63 or 2**h<end:fail('H does not cover heap and mapped ranges')
     data=int(data_arg,0);text=int(text_arg,0) if text_arg else max(0x400000,(end+0x1fffff)&~0x1fffff)
-    if data<4096 or data%4096 or data>base: fail('data base must be page aligned between null region and resolved heap')
-    if text<end or text<=data or text%0x200000: fail('text must follow all device ranges on a 2MiB boundary')
+    if data<4096 or data%4096 or data>base:fail('data base must be page aligned between null region and resolved heap')
+    if text<end or text<=data or text%0x200000:fail('text must follow all device ranges on a 2MiB boundary')
+    if any(x['base']<data for x in bindings):fail('mapped range precedes native data base')
+    layout['native_bindings']=bindings
     (out/'resolved-layout.json').write_text(json.dumps(layout,sort_keys=True,separators=(',',':'))+'\n')
     (out/'native-layout.ll').write_text('target triple = "x86_64-unknown-linux-musl"\n'
         f'@__bennett_rt_native_layout = constant {{ i64, i64, i64 }} {{ i64 1, i64 {base}, i64 {limit} }}, align 8\n')
-    # Resolved global names are ISA symbols, not LLVM symbols; do not pretend
-    # their placement is implemented. This check runs after the marker audit.
-    unresolved = bool(layout['globals'] or unresolved_regions)
-    mapping_assert = ' ASSERT(0, "BD-E-NATIVE-LAYOUT: bp-xyn must supply LLVM symbol to resolved device global/region mapping")' if unresolved else ''
-    (out/'comparison.ld').write_text(f'''SECTIONS {{
-{mapping_assert}
- . = {data}; .rodata : {{ *(.rodata .rodata.*) }}
- .data : {{ *(.data .data.*) *(.init_array*) *(.fini_array*) }}
- .bss : {{ *(.bss .bss.*) *(COMMON) }}
+    def section(index,binding):
+        name='.bennett_mapped_'+str(index);symbol=quoted(binding['native_symbol'])
+        selection=' '.join(quoted(x) for x in binding['sections'])
+        segment='native_data' if binding['base']<base else 'native_regions'
+        return f''' {name} {binding['base']} : {{ *({selection}) }} :{segment}
+ ASSERT(SIZEOF({name}) == {binding['size']}, "BD-E-NATIVE-LAYOUT: mapped section extent differs")
+ ASSERT(DEFINED({symbol}), "BD-E-NATIVE-LAYOUT: mapped symbol is missing")
+ ASSERT({symbol} == {binding['base']}, "BD-E-NATIVE-LAYOUT: mapped symbol address differs")
+'''
+    low=''.join(section(i,b) for i,b in enumerate(bindings) if b['base']<base)
+    high=''.join(section(i,b) for i,b in enumerate(bindings) if b['base']>=base+limit)
+    regions_header=' native_regions PT_LOAD FLAGS(6);' if high else ''
+    (out/'comparison.ld').write_text(f'''PHDRS {{ native_data PT_LOAD FLAGS(6);{regions_header} native_text PT_LOAD FLAGS(5); }}
+SECTIONS {{
+ . = {data};
+{low} __bennett_comparison_low_start = .;
+{high} . = __bennett_comparison_low_start;
+ .rodata : {{ *(.rodata .rodata.*) }} :native_data
+ .data : {{ *(.data .data.*) *(.init_array*) *(.fini_array*) }} :native_data
+ .bss : {{ *(.bss .bss.*) *(COMMON) }} :native_data
  __bennett_comparison_data_end = .;
  ASSERT(ALIGN(., 4096) == {base}, "BD-E-NATIVE-LAYOUT: native data end differs from resolved device heap base")
- . = {text}; .text : {{ *(.text .text.*) }}
+ . = {text}; .text : {{ *(.text .text.*) }} :native_text
  /DISCARD/ : {{ *(.eh_frame*) *(.comment) *(.note*) }}
 }}
 ''')
-except (ValueError,KeyError,OSError,TypeError,IndexError) as e:
-    print(str(e) if str(e).startswith('BD-E-') else 'BD-E-NATIVE-LAYOUT: '+str(e),file=sys.stderr)
+
+try:
+    if sys.argv[1]=='--audit':audit(*sys.argv[2:])
+    else:prepare(*sys.argv[1:])
+except (ValueError,KeyError,OSError,TypeError,IndexError,subprocess.TimeoutExpired) as error:
+    print(str(error) if str(error).startswith('BD-E-') else 'BD-E-NATIVE-LAYOUT: '+str(error),file=sys.stderr)
     sys.exit(1)

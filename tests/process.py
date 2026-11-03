@@ -93,9 +93,9 @@ with (nullcontext(evidence) if evidence else tempfile.TemporaryDirectory(dir=roo
         # runtime. This is an isolated entry-preparation diagnostic, not a
         # substitute for the plugin's actual materialised comparison module.
         layout=d/f'layout-{major}.json'
-        # The retained O0/O2 maps end at 0x10a38/0x10a18; the first page is
-        # 0x11000. The driver's equality assertion remains mandatory.
-        layout.write_text(json.dumps(dict(null_size=4096,ptr_width=64,heap_base=69632,
+        # The fixed-IR codegen maps are retained in the process evidence.
+        # Use their first following page, 0x12000; exact equality stays mandatory.
+        layout.write_text(json.dumps(dict(null_size=4096,ptr_width=64,heap_base=73728,
             heap_limit_max=1048576,globals={},interface_regions={})))
         for name,call in [('supplied','program(argc,argv,envp)'),('empty','program(0,0,0)')]:
             harness=d/f'{name}-{major}.c'
@@ -199,8 +199,8 @@ extern int program(int,char **,char **);
 int main(int argc,char **argv,char **envp) { program(argc,argv,envp); write(1,"AFTER",5); return 42; }
 ''')
         exit_layout=d/f'exit-layout-{major}.json'
-        # Exit/stdio maps end at 0x10d50/0x10d20, still below 0x11000.
-        exit_layout.write_text(json.dumps(dict(null_size=4096,ptr_width=64,heap_base=69632,
+        # Exit/stdio uses its measured fixed-IR codegen page; exact equality is checked.
+        exit_layout.write_text(json.dumps(dict(null_size=4096,ptr_width=64,heap_base=73728,
             heap_limit_max=1048576,globals={},interface_regions={})))
         exit_out=d/f'exit-native-{major}'
         run([exe,f'--bennett-llvm-major={major}',f'--bennett-materialised={exit_prepared/"process-prepared.bc"}',

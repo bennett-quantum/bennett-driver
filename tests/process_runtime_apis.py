@@ -32,8 +32,10 @@ int main(void) {
         run([sys.argv[1],f'--bennett-llvm-major={major}','-bennett-dialect=0.2.10',
             '--bennett-tier=reversible','--bennett-entry=main','--bennett-emit=process-bitcode',
             f'--bennett-out={prepared}',f'--bennett-sysroot={ws}/bennett-runtimes/dist/llvm{major}/musl-sysroot',source])
+        # Fixed-IR codegen maps end at 0x11020 (18) and 0x11050 (23);
+        # the first following page is 0x12000. Keep the exact assertion.
         layout=d/f'layout-{major}.json'
-        layout.write_text(json.dumps(dict(null_size=4096,ptr_width=64,heap_base=69632,
+        layout.write_text(json.dumps(dict(null_size=4096,ptr_width=64,heap_base=73728,
             heap_limit_max=1048576,globals={},interface_regions={})))
         out=d/f'native-{major}'
         run([sys.argv[1],f'--bennett-llvm-major={major}',f'--bennett-materialised={prepared/"process-prepared.bc"}',
