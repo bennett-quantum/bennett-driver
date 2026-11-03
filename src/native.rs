@@ -271,6 +271,14 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         .set("checked_materialised", artifact(&checked, None)?);
     let coverage = obj([
         ("subject", "materialised".into()),
+        (
+            "provenance",
+            if materialisation.is_some() {
+                "selected-entry launch record verified".into()
+            } else {
+                "explicit module; producer receipt not verified".into()
+            },
+        ),
         ("status", "instrumented".into()),
         ("general_memory", true.into()),
         ("use_after_free", true.into()),
@@ -468,6 +476,10 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
                 tool(m, "llc"),
                 format!("-{level}"),
                 "-filetype=obj".into(),
+                // A density above 100% selects branch lowering instead of
+                // private jump tables whose readonly data differs by O-level.
+                "-jump-table-density=101".into(),
+                "-optsize-jump-table-density=101".into(),
                 closed.display().to_string(),
                 "-o".into(),
                 code_input.display().to_string(),
@@ -510,6 +522,14 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
             ),
             ("residual_markers", strings(&residual)),
             ("materialised_sha256", device_sha.clone().into()),
+            (
+                "provenance",
+                if materialisation.is_some() {
+                    "selected-entry launch record verified".into()
+                } else {
+                    "explicit module; producer receipt not verified".into()
+                },
+            ),
             ("link_argv", strings(&argv)),
             ("bitcode_link_argv", strings(&bitcode_link)),
             ("linked_sha256", sha(&closed)?.into()),

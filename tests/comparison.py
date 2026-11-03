@@ -27,6 +27,9 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='comparison-') as tmp:
         for level in ('O0','O2'):
             r=next(r for r in records if r.get('variant')==level)
             a=r['link_argv'];assert all(x in a for x in ('-nostdlib','-nostdinc','-static','-no-pie'))
+            obj=pathlib.Path(r['codegen_object']['path'])
+            assert hashlib.sha256(obj.read_bytes()).hexdigest()==r['codegen_object']['sha256']
+            assert r['provenance']=='explicit module; producer receipt not verified'
             assert not any(x in a for x in ('-lc','-lm','-fsanitize=address,undefined'))
             assert run([out/f'native-{level}'])==b''
             assert not run([llvm/'llvm-nm','--undefined-only',out/f'native-{level}']).strip()

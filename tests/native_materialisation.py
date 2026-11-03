@@ -12,6 +12,7 @@ evidence=os.environ.get('BENNETT_DRIVER_NATIVE_EVIDENCE')
 if evidence:pathlib.Path(evidence).mkdir(parents=True,exist_ok=False)
 with (nullcontext(evidence) if evidence else tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='native-materialisation-')) as temp:
  d=pathlib.Path(temp)
+ plugin_root=pathlib.Path(os.environ.get('BENNETT_DRIVER_NATIVE_PLUGIN_ROOT') or root.parent/'bennett-plugin')
  for major in (18,23):
   source=d/f'marked-{major}.ll'
   source.write_text(target_headers(major)+'''declare ptr @__bennett_qalloc(i64, i64)
@@ -22,15 +23,17 @@ define i32 @top() {
  ret i32 7
 }
 ''')
+  plugin=plugin_root/f'build/libbennett-plugin-{major}.so'
+  plugin_flags=[f'--bennett-plugin={plugin}',f'--bennett-plugin-sha256={sha(plugin)}']
   production=d/f'production-{major}'
-  run([sys.argv[1],f'--bennett-llvm-major={major}','-bennett-dialect=0.2.10',f'--bennett-out={production}',source])
+  run([sys.argv[1],f'--bennett-llvm-major={major}','-bennett-dialect=0.2.10',f'--bennett-out={production}',*plugin_flags,source])
   device=production/'device.bc';digest=sha(device)
   harness=d/f'harness-{major}.c';harness.write_text('extern int top(void); int main(void) { return top()!=7; }\n')
   layout=d/f'layout-{major}.json';layout.write_text(json.dumps(dict(null_size=4096,ptr_width=64,heap_base=69632,
    heap_limit_max=1048576,globals={},interface_regions={})))
   out=d/f'native-{major}'
   result=subprocess.run([sys.argv[1],f'--bennett-llvm-major={major}',f'--bennett-materialised={device}',
-   '--bennett-comparison-entry=top',f'--bennett-native-input={harness}',f'--bennett-out={out}',
+   '--bennett-comparison-entry=top',*plugin_flags,f'--bennett-native-input={harness}',f'--bennett-out={out}',
    f'--bennett-comparison-layout={layout}','--bennett-layout-data-base=65536'],capture_output=True,timeout=120)
   assert sha(device)==digest
   record=json.loads((out/'manifest.json').read_text())
@@ -53,7 +56,7 @@ define i32 @top() {
     ('plugin-pin','--bennett-plugin-sha256='+'0'*64)]:
    refused=d/f'{label}-{major}'
    args=[sys.argv[1],f'--bennett-llvm-major={major}',f'--bennett-materialised={device}',
-    '--bennett-comparison-entry=top',f'--bennett-out={refused}']
+    '--bennett-comparison-entry=top',f'--bennett-out={refused}',f'--bennett-plugin={plugin}']
    if label=='entry':
     args[3]=option
     args.append(f'--bennett-comparison-launch-record={production}/top/launch-record.json')
