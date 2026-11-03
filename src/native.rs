@@ -76,7 +76,11 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
             .map(PathBuf::from)
             .unwrap_or(b.out.join("native-O2")),
     )?;
+    let materialisation = native_adapter::Adapter::select(o, m, &device)?;
     let mut protected = vec![device.clone(), runtime.clone(), arith.clone()];
+    if let Some(adapter) = &materialisation {
+        protected.extend([adapter.plugin.clone(), adapter.receipt.clone()]);
+    }
     protected.extend(o.inputs.iter().map(absolute).collect::<Result<Vec<_>>>()?);
     for key in [
         "bennett-plugin",
@@ -123,6 +127,13 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         "native-memory.bc",
         "bennett-native-input.bc",
         "bennett-native-backend.bc",
+        "native-prepared.bc",
+        "native-finalised.bc",
+        "native-host.bc",
+        "native-preparation.json",
+        "native-materialisation.json",
+        "native-O2.o",
+        "native-O0.o",
     ] {
         destinations.push((name, b.out.join(name)));
     }
@@ -142,6 +153,11 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         ],
         None,
     )?;
+    let source = if let Some(adapter) = &materialisation {
+        adapter.run(b, m, native_adapter::Phase::Prepare, &device)?
+    } else {
+        device.clone()
+    };
     let input_ir = b.out.join("arith-input.ll");
     b.run(
         "comparison-arith-input",
@@ -149,7 +165,7 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
             tool(m, "opt"),
             "-passes=verify".into(),
             "-S".into(),
-            device.display().to_string(),
+            source.display().to_string(),
             "-o".into(),
             input_ir.display().to_string(),
         ],
@@ -194,7 +210,7 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
     let linked = b.out.join("comparison-linked.bc");
     let bitcode_link = vec![
         tool(m, "llvm-link"),
-        device.display().to_string(),
+        source.display().to_string(),
         runtime.display().to_string(),
         arith.display().to_string(),
         "--only-needed".into(),
@@ -324,8 +340,13 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         "resolved_layout",
         artifact(&b.out.join("resolved-layout.json"), None)?,
     );
+    let native_source = if let Some(adapter) = &materialisation {
+        adapter.run(b, m, native_adapter::Phase::Finalise, &checked)?
+    } else {
+        checked.clone()
+    };
     let adapted = b.out.join("comparison-adapted.bc");
-    let mut support_link = vec![tool(m, "llvm-link"), checked.display().to_string()];
+    let mut support_link = vec![tool(m, "llvm-link"), native_source.display().to_string()];
     // Startup support stays outside checked producer/harness bodies.
     support_link.extend([
         config.display().to_string(),
@@ -409,6 +430,10 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         ],
         None,
     )?;
+    if let Some(adapter) = &materialisation {
+        let host = adapter.run(b, m, native_adapter::Phase::HostImports, &closed)?;
+        fs::copy(host, &closed).map_err(|error| format!("native host imports: {error}"))?;
+    }
     audit_markers(b, m, &closed)?;
     let imports = b.run(
         "native-import-audit",
@@ -434,6 +459,21 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         } else {
             exe.with_file_name("native-O0")
         };
+        // Keep checked source IR fixed. Only machine-code optimisation differs
+        // between the comparison and diagnostic variants.
+        let code_input = b.out.join(format!("native-{level}.o"));
+        b.run(
+            &format!("native-codegen-{level}"),
+            vec![
+                tool(m, "llc"),
+                format!("-{level}"),
+                "-filetype=obj".into(),
+                closed.display().to_string(),
+                "-o".into(),
+                code_input.display().to_string(),
+            ],
+            None,
+        )?;
         let mut argv = vec![
             tool(m, "clang"),
             format!("-{level}"),
@@ -442,7 +482,7 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
             "-static".into(),
             "-no-pie".into(),
             "-fno-merge-all-constants".into(),
-            closed.display().to_string(),
+            code_input.display().to_string(),
         ];
         if let Some(root) = o.get("bennett-sysroot") {
             argv.push(format!("--sysroot={}", absolute(root)?.display()));
@@ -473,6 +513,7 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
             ("link_argv", strings(&argv)),
             ("bitcode_link_argv", strings(&bitcode_link)),
             ("linked_sha256", sha(&closed)?.into()),
+            ("codegen_object", artifact(&code_input, None)?),
             ("runtimes_sha256", sha(&runtime)?.into()),
             ("arith_sha256", sha(&arith)?.into()),
             ("base_arith_sha256", base_arith_sha.clone().into()),

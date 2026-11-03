@@ -31,7 +31,7 @@ for launch in launches:
     d = out/launch['entry']
     cert = load(d/'certificate.json')
     cert['producer']['version'] = manifest['driver_version'] + '+build.' + digest
-    cert['producer']['materialisation']['pipeline'] = next((a.removeprefix('--bennett-pipeline=') for a in manifest['options'] if a.startswith('--bennett-pipeline=')), 'lto<O3>') + ',bennett'
+    cert['producer']['materialisation']['pipeline'] = manifest['pipeline'] + ',bennett'
     save(d/'certificate.json', cert)
     receipt = load(d/'launch-record.json')
     rel = launch['entry']+'/certificate.json'

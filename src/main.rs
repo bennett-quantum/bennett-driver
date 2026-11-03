@@ -2,6 +2,7 @@ mod arith;
 mod classifier;
 mod json;
 mod native;
+mod native_adapter;
 mod output_paths;
 mod process;
 mod report;
@@ -16,7 +17,7 @@ type Result<T> = std::result::Result<T, String>;
 const DIALECT: &str = "0.2.10";
 const ISA: &str = "0.8";
 const IDENTITY: &str = "dialect-0.2.10;isa-0.8";
-const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.10 -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8,\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n --bennett-emit=process-bitcode (preparation stage; manifest status prepared)\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n --bennett-classifier-input=FILE (original C, UBSan-minimal diagnostic)\n Plain O2 comparison and O0 diagnostic; full ASan blocked on brt-nuu.2\n";
+const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.10 -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8,\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n --bennett-emit=process-bitcode (preparation stage; manifest status prepared)\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-comparison-entry=SYMBOL --bennett-comparison-launch-record=FILE\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n --bennett-classifier-input=FILE (original C, UBSan-minimal diagnostic)\n Plain O2 comparison and O0 diagnostic; full ASan blocked on brt-nuu.2\n";
 #[derive(Debug)]
 struct Options {
     values: BTreeMap<String, String>,
@@ -58,6 +59,8 @@ impl Options {
                         | "bennett-pipeline"
                         | "bennett-emit"
                         | "bennett-materialised"
+                        | "bennett-comparison-entry"
+                        | "bennett-comparison-launch-record"
                         | "bennett-comparison-record"
                         | "bennett-comparison-output"
                         | "bennett-sysroot"
@@ -158,6 +161,8 @@ impl Options {
                         | "bennett-native-check-sha256"
                         | "bennett-classifier-input"
                         | "bennett-comparison-layout"
+                        | "bennett-comparison-entry"
+                        | "bennett-comparison-launch-record"
                         | "bennett-comparison-record"
                         | "bennett-comparison-output"
                         | "bennett-layout-data-base"
@@ -493,7 +498,11 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
             let present = declared.lines().map(str::trim_start).any(|line| {
                 line.starts_with(field)
                     && line.split_once('=').is_some_and(|(_, value)| {
-                        !value.trim().is_empty() && value.trim() != "\"\""
+                        value
+                            .trim_start()
+                            .strip_prefix('"')
+                            .and_then(|value| value.split_once('"'))
+                            .is_some_and(|(target, _)| !target.is_empty())
                     })
             });
             if !present {
@@ -603,6 +612,7 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
         return b.save("prepared");
     }
     let pipeline = o.get("bennett-pipeline").unwrap_or("lto<O3>");
+    b.record.set("pipeline", pipeline.into());
     b.run(
         "postlink",
         vec![
