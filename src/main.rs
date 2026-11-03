@@ -661,6 +661,19 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
         native_host::build(o, b, m, &modules, pipeline)?;
         return finalise_build(b);
     }
+    // These transforms must precede LTO: it can delete an internal oracle
+    // root, fold old global initializers, or use the old scalable-vector bounds.
+    // Merely registering a late plugin option cannot establish that ordering.
+    let preparation = ["bennett-oracle", "bennett-snapshot", "bennett-vscale"]
+        .into_iter()
+        .filter(|key| o.get(key).is_some())
+        .collect::<Vec<_>>();
+    if !preparation.is_empty() {
+        return Err(format!(
+            "BD-B-MODE-BACKEND: {} requires a published descriptor/root, initializer or vscale preparation handoff before post-link optimisation; requested options and input hashes are retained, no unchanged build is certified",
+            preparation.join(", ")
+        ));
+    }
     let arith = arith::prepare(o, b, m, &arith, &input_ir)?;
     let linked = b.out.join("linked.bc");
     let post = b.out.join("postlink.bc");

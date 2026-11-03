@@ -15,8 +15,8 @@ bookkeeping, PPC arithmetic, or all dialect semantics. Current publication and
 root configuration adoption remain tracked by `0ai` and `193`.
 
 The driver admits the published oracle/bind/dev/payload, snapshot, platform,
-class, vscale/CPU, qreg/inplace/warning and arena controls, and preserves their
-order and values for the backend. Bind, device and class options may repeat.
+class, vscale/CPU, qreg/inplace/warning and arena controls, and records their
+order and values. Bind, device and class options may repeat.
 `-bennett-closed-unit` accepts its specified flag spelling, as well as an explicit
 boolean. A snapshot input is opened and hash-bound before backend processing;
 only successful processing can attach that snapshot hash to a build record.
@@ -26,7 +26,12 @@ compare both a closed entry and a function-pointer entry with whole-program ISA
 output; the current 0.2.13 component passes on both LLVM majors. The historical
 producer cannot compile that latter indirect CC call.
 
-Other controls still require a published backend transform edge. The current
+Other controls still require a published backend transform edge. Oracle roots,
+snapshot initializers and fixed vscale must be prepared before post-link
+optimization, which can otherwise delete the root or fold the old values.
+These requests stop before that pipeline until the preparation edge exists.
+Registering only a late plugin option would not establish correct ordering.
+The remaining controls reach the backend unchanged. The current
 plugin does not register the descriptor binding/payload, snapshot, platform,
 class or vscale controls. Such requests fail as `BD-B-MODE-BACKEND`, retaining
 the complete argv and backend diagnostics and producing no successful build or

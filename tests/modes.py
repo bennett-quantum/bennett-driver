@@ -44,10 +44,16 @@ define i32 @top() {
             assert result.returncode != 0 and b'BD-B-MODE-BACKEND' in result.stderr, (label,result.stderr)
             assert b'unimplemented driver option' not in result.stderr and b'empty or duplicate' not in result.stderr
             manifest = json.loads((out/'manifest.json').read_text())
-            command = next(c for c in manifest['commands'] if c['stage'] == 'plugin')
-            assert not command['success'] and 'Unknown command line argument' in command['stderr']
             for option in options:
-                assert option.lstrip('-') in [a.lstrip('-') for a in command['argv']], (label,command['argv'])
+                assert option in manifest['options'], (label,manifest['options'])
+            if label in ('oracle', 'snapshot', 'vscale'):
+                assert not any(c['stage'] in ('postlink', 'plugin') for c in manifest['commands']), label
+                assert b'before post-link optimisation' in result.stderr
+            else:
+                command = next(c for c in manifest['commands'] if c['stage'] == 'plugin')
+                assert not command['success'] and 'Unknown command line argument' in command['stderr']
+                for option in options:
+                    assert option.lstrip('-') in [a.lstrip('-') for a in command['argv']], (label,command['argv'])
             assert not (out/'build.json').exists(), 'unavailable mode must not certify an unchanged build'
             if label == 'snapshot':
                 assert manifest['snapshot']['sha256'] == hashlib.sha256(snapshot.read_bytes()).hexdigest()
