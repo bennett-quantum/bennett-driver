@@ -1,6 +1,6 @@
 """Every production IR input must declare its own target before linking."""
 import pathlib,subprocess,sys,tempfile
-from toolchain import target_headers
+from toolchain import flags, target_headers
 root=pathlib.Path(__file__).resolve().parents[1]
 body='''declare ptr @__bennett_qalloc(i64, i64)
 declare void @__bennett_qfree(ptr)
@@ -28,8 +28,9 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='input-headers-') as tem
      if spelling=='bc':subprocess.run([f'/usr/lib/llvm-{major}/bin/llvm-as',source,'-o',input_file],capture_output=True,check=True)
      out=d/f'out-{major}-{case}-{position}-{spelling}'
      inputs=[input_file] if position=='first' else [complete,input_file]
-     result=subprocess.run([sys.argv[1],f'--bennett-llvm-major={major}','-bennett-dialect=0.2.10',
+     result=subprocess.run([sys.argv[1],*flags(major),f'--bennett-llvm-major={major}','-bennett-dialect=0.2.10',
        f'--bennett-out={out}',*inputs],capture_output=True,timeout=120)
      assert result.returncode and b'BD-E-VERSION' in result.stderr,(major,case,position,spelling,result.returncode,result.stderr)
+     assert b'missing target ' in result.stderr and str(input_file).encode() in result.stderr,result.stderr
      assert not (out/'linked.bc').exists(),(major,case,position,spelling)
  print('Both majors: first and later IR inputs with either/both target headers missing fail before linking')

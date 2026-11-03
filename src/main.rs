@@ -3,6 +3,7 @@ mod classifier;
 mod json;
 mod native;
 mod native_adapter;
+mod native_host;
 mod output_paths;
 mod process;
 mod report;
@@ -14,10 +15,9 @@ use std::{
     process::{Command, Stdio},
 };
 type Result<T> = std::result::Result<T, String>;
-const DIALECT: &str = "0.2.10";
+const DIALECT: &str = "0.2.13";
 const ISA: &str = "0.8";
-const IDENTITY: &str = "dialect-0.2.10;isa-0.8";
-const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.10 -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8,\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n --bennett-emit=process-bitcode (preparation stage; manifest status prepared)\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-comparison-entry=SYMBOL --bennett-comparison-launch-record=FILE\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n --bennett-classifier-input=FILE (original C, UBSan-minimal diagnostic)\n Plain O2 comparison and O0 diagnostic; full ASan blocked on brt-nuu.2\n";
+const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.13 (historical 0.2.10 accepted explicitly) -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8,\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n --bennett-emit=process-bitcode (preparation stage; manifest status prepared)\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-comparison-entry=SYMBOL --bennett-comparison-launch-record=FILE\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n --bennett-classifier-input=FILE (original C, UBSan-minimal diagnostic)\n Plain O2 comparison and O0 diagnostic; full ASan blocked on brt-nuu.2\n";
 #[derive(Debug)]
 struct Options {
     values: BTreeMap<String, String>,
@@ -39,9 +39,13 @@ impl Options {
             }
             if !positional && arg.starts_with('-') {
                 let clean = arg.trim_start_matches('-');
-                let (key, value) = clean
-                    .split_once('=')
-                    .ok_or_else(|| format!("BD-E-INPUT: option requires =value: {arg}"))?;
+                let (key, value) = match clean.split_once('=') {
+                    Some(pair) => pair,
+                    None if matches!(clean, "bennett-closed-unit" | "bennett-warn-qstore") => {
+                        (clean, "true")
+                    }
+                    None => return Err(format!("BD-E-INPUT: option requires =value: {arg}")),
+                };
                 let driver = matches!(
                     key,
                     "bennett-dialect"
@@ -85,6 +89,21 @@ impl Options {
                         | "bennett-tier"
                         | "bennett-entry"
                         | "bennett-disk"
+                        | "bennett-oracle"
+                        | "bennett-bind"
+                        | "bennett-dev"
+                        | "bennett-payload"
+                        | "bennett-snapshot"
+                        | "bennett-closed-unit"
+                        | "bennett-platform"
+                        | "bennett-platform-ram"
+                        | "bennett-class"
+                        | "bennett-vscale"
+                        | "bennett-cpu"
+                        | "bennett-qreg-instances"
+                        | "bennett-inplace-exhaustive-bits"
+                        | "bennett-warn-qstore"
+                        | "bennett-arena-heap"
                 );
                 if !driver && !pass {
                     return Err(format!(
@@ -94,9 +113,16 @@ impl Options {
                 if value.is_empty() {
                     return Err(format!("BD-E-INPUT: empty option {key}"));
                 }
-                if o.values.insert(key.into(), value.into()).is_some() {
+                if matches!(key, "bennett-closed-unit" | "bennett-warn-qstore")
+                    && !matches!(value, "true" | "false")
+                {
+                    return Err(format!("BD-E-INPUT: {key} requires true|false"));
+                }
+                let repeatable = matches!(key, "bennett-bind" | "bennett-dev" | "bennett-class");
+                if o.values.contains_key(key) && !repeatable {
                     return Err(format!("BD-E-INPUT: empty or duplicate option {key}"));
                 }
+                o.values.entry(key.into()).or_insert_with(|| value.into());
                 if pass {
                     o.plugin_args.push(format!(
                         "{}{}={value}",
@@ -131,8 +157,13 @@ impl Options {
             let out = path.join("native-work").display().to_string();
             o.values.insert("bennett-out".into(), out);
         }
-        if o.get("bennett-dialect") != Some(DIALECT) || o.get("bennett-isa").unwrap_or(ISA) != ISA {
-            return Err("BD-E-VERSION: required dialect 0.2.10 and ISA 0.8".into());
+        if !matches!(o.get("bennett-dialect"), Some("0.2.10" | "0.2.13"))
+            || o.get("bennett-isa").unwrap_or(ISA) != ISA
+        {
+            return Err(
+                "BD-E-VERSION: required dialect 0.2.13 (or explicit historical 0.2.10) and ISA 0.8"
+                    .into(),
+            );
         }
         if o.get("bennett-out").is_none() || (o.inputs.is_empty() && !adapter) {
             return Err("BD-E-INPUT: -bennett-out and at least one input required".into());
@@ -195,6 +226,9 @@ impl Options {
                 "BD-E-VERSION: unsupported envelope LLVM major {v}; expected 18 or 23"
             )),
         }
+    }
+    fn dialect(&self) -> &str {
+        self.get("bennett-dialect").unwrap()
     }
 }
 fn absolute(p: impl AsRef<Path>) -> Result<PathBuf> {
@@ -364,7 +398,7 @@ fn sysroot_flags(o: &Options) -> Result<Vec<String>> {
 fn tool(major: u32, name: &str) -> String {
     format!("/usr/lib/llvm-{major}/bin/{name}")
 }
-fn identity(b: &mut Build, plugin: &Path, major: u32) -> Result<()> {
+fn identity(b: &mut Build, plugin: &Path, major: u32, dialect: &str) -> Result<()> {
     let id = b.run(
         "plugin-identity",
         vec![
@@ -376,11 +410,36 @@ fn identity(b: &mut Build, plugin: &Path, major: u32) -> Result<()> {
         ],
         None,
     )?;
-    if id.trim() != IDENTITY {
+    let expected = format!("dialect-{dialect};isa-{ISA}");
+    if id.trim() != expected {
         return Err(format!(
-            "BD-E-VERSION: plugin identity {:?}, expected {IDENTITY}",
+            "BD-E-VERSION: plugin identity {:?}, expected {expected}",
             id.trim()
         ));
+    }
+    Ok(())
+}
+fn admit_dialect_flag(ir: &str, expected: &str) -> Result<()> {
+    // This is opt's verified, canonical IR. Only tuples referenced by the
+    // module-flags list are authoritative, not arbitrary debug metadata.
+    if let Some(flags) = ir
+        .lines()
+        .find_map(|line| line.strip_prefix("!llvm.module.flags = !{"))
+    {
+        for id in flags.trim_end_matches('}').split(", ") {
+            let prefix = format!("{id} = ");
+            let tuple = ir
+                .lines()
+                .find_map(|line| line.strip_prefix(&prefix))
+                .ok_or("BD-E-VERSION: missing verified module-flag tuple")?;
+            if let Some((_, value)) = tuple.split_once(", !\"bennett.dialect\", ")
+                && value.trim_end_matches('}').trim() != format!("!\"{expected}\"")
+            {
+                return Err(format!(
+                    "BD-E-VERSION: bennett.dialect module flag {value} differs from {expected}"
+                ));
+            }
+        }
     }
     Ok(())
 }
@@ -409,10 +468,13 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
         b.record
             .set(key, artifact(p, o.get(&format!("bennett-{key}-sha256")))?);
     }
-    identity(b, &plugin, m)?;
+    identity(b, &plugin, m, o.dialect())?;
     // Identity was obtained from the exported ABI, not a string search in the .so.
     let mut p = artifact(&plugin, None)?;
-    p.set("identity", IDENTITY.into());
+    p.set(
+        "identity",
+        format!("dialect-{};isa-{ISA}", o.dialect()).into(),
+    );
     b.record.set("plugin", p);
     let mut versions = vec![];
     for name in ["clang", "llvm-link", "opt"] {
@@ -437,6 +499,9 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
     }
     if let Some(file) = o.get("bennett-disk") {
         b.record.set("disk", artifact(&absolute(file)?, None)?);
+    }
+    if let Some(file) = o.get("bennett-snapshot") {
+        b.record.set("snapshot", artifact(&absolute(file)?, None)?);
     }
     let mut inputs = vec![];
     let mut modules = vec![];
@@ -465,6 +530,12 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
                 out
             }
             "bc" | "ll" => p,
+            "o" | "a" => {
+                return Err(format!(
+                    "BD-B-NATIVE-INPUT: {} requires the mixed native/VM host link, deferred under bennett-4ht and bennett-driver-116; no partial output was linked",
+                    p.display()
+                ));
+            }
             _ => {
                 return Err(format!(
                     "BD-E-INPUT: unsupported input {}: expected C or LLVM bitcode/IR; extraction of rlib/Julia sources remains a §19.1 obligation",
@@ -532,7 +603,8 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
             )
         })?;
         let text = read(&ir)?;
-        input_ir.push(ir);
+        admit_dialect_flag(&text, o.get("bennett-dialect").unwrap())?;
+        input_ir.push(ir.clone());
         for (key, previous) in [
             ("target datalayout", &mut layout),
             ("target triple", &mut triple),
@@ -548,15 +620,52 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
             }
             *previous = Some(line.to_string());
         }
-        modules.push(module.display().to_string());
+        let verified = b.out.join(format!("input-{i}-verified.bc"));
+        b.run(
+            "input-bitcode",
+            vec![
+                tool(m, "llvm-as"),
+                ir.display().to_string(),
+                "-o".into(),
+                verified.display().to_string(),
+            ],
+            None,
+        )?;
+        modules.push(verified.display().to_string());
     }
     b.record.set("inputs", Json::Array(inputs));
+    let pipeline = o.get("bennett-pipeline").unwrap_or("lto<O3>");
+    b.record.set("pipeline", pipeline.into());
+    let process_entry = o.get("bennett-tier") == Some("reversible");
+    // Marker calls and reserved runtime names are the dialect's entry to the
+    // device pipeline. Inspect source modules before adding device libraries;
+    // ordinary host libc must never become a selected device closure.
+    let mut reserved_symbols = false;
+    for module in &modules {
+        let symbols = b.run(
+            "input-symbols",
+            vec![tool(m, "llvm-nm"), "--format=posix".into(), module.clone()],
+            None,
+        )?;
+        reserved_symbols |= symbols.lines().any(|line| {
+            line.split_whitespace()
+                .next()
+                .is_some_and(|name| name.starts_with("__bennett_"))
+        });
+    }
+    let device_mode = process_entry
+        || ["bennett-oracle", "bennett-platform", "bennett-snapshot"]
+            .iter()
+            .any(|key| o.get(key).is_some());
+    if !device_mode && !reserved_symbols {
+        native_host::build(o, b, m, &modules, pipeline)?;
+        return finalise_build(b);
+    }
     let arith = arith::prepare(o, b, m, &arith, &input_ir)?;
     let linked = b.out.join("linked.bc");
     let post = b.out.join("postlink.bc");
     let mut link = vec![tool(m, "llvm-link")];
     link.extend(modules);
-    let process_entry = o.get("bennett-tier") == Some("reversible");
     if !process_entry {
         link.extend([
             runtime.display().to_string(),
@@ -611,8 +720,6 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
         );
         return b.save("prepared");
     }
-    let pipeline = o.get("bennett-pipeline").unwrap_or("lto<O3>");
-    b.record.set("pipeline", pipeline.into());
     b.run(
         "postlink",
         vec![
@@ -628,7 +735,7 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
         tool(m, "opt"),
         format!("-load-pass-plugin={}", plugin.display()),
         "-passes=bennett".into(),
-        format!("-bennett-dialect={DIALECT}"),
+        format!("-bennett-dialect={}", o.dialect()),
         format!("-bennett-isa={ISA}"),
         format!("-bennett-out={}", b.out.display()),
     ];
@@ -636,6 +743,11 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
     pass.extend(["-disable-output".into(), post.display().to_string()]);
     let blocked = match b.run("plugin", pass, Some(&arith)) {
         Ok(_) => None,
+        Err(e) if e.contains("Unknown command line argument") => {
+            return Err(format!(
+                "BD-B-MODE-BACKEND: published dialect §19/20 control has no registered backend; selected plugin and complete argv are recorded, no unchanged build is certified. Required control implementation or published driver/backend handoff: {e}"
+            ));
+        }
         Err(e) if e.contains("BD-B-") => Some(e),
         Err(e) => return Err(e),
     };
@@ -675,6 +787,13 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
     } else {
         "complete"
     })?;
+    finalise_build(b)?;
+    if let Some(e) = blocked {
+        return Err(e);
+    }
+    Ok(())
+}
+fn finalise_build(b: &Build) -> Result<()> {
     let mut c = Command::new("python3");
     c.arg("-c")
         .arg(include_str!("../scripts/finalise-build.py"))
@@ -686,9 +805,6 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
             "build-record: {}",
             String::from_utf8_lossy(&result.stderr)
         ));
-    }
-    if let Some(e) = blocked {
-        return Err(e);
     }
     Ok(())
 }
@@ -726,7 +842,7 @@ fn main() {
             record: obj([
                 ("schema", "bennett-driver-build-1".into()),
                 ("driver_version", env!("CARGO_PKG_VERSION").into()),
-                ("dialect", DIALECT.into()),
+                ("dialect", o.dialect().into()),
                 ("isa", ISA.into()),
                 ("llvm_major", o.major()?.into()),
                 ("options", strings(&args)),

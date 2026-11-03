@@ -2,6 +2,29 @@
 use super::*;
 use std::os::unix::fs::MetadataExt;
 
+/// Prior build stages have already published these bytes and hashes. Comparison
+/// destinations must preserve them just like external source/library inputs.
+pub fn recorded_artifacts(value: &Json, paths: &mut Vec<PathBuf>) {
+    match value {
+        Json::Object(fields) => {
+            if let (Some(Json::Str(path)), Some(Json::Str(_))) =
+                (fields.get("path"), fields.get("sha256"))
+            {
+                paths.push(PathBuf::from(path));
+            }
+            for value in fields.values() {
+                recorded_artifacts(value, paths);
+            }
+        }
+        Json::Array(values) => {
+            for value in values {
+                recorded_artifacts(value, paths);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn resolved(path: &Path) -> Result<PathBuf> {
     match fs::canonicalize(path) {
         Ok(path) => Ok(path),

@@ -1,5 +1,5 @@
 import os, json, pathlib, subprocess, sys, tempfile
-from toolchain import flags
+from toolchain import flags, target_headers
 root=pathlib.Path(__file__).resolve().parents[1]
 ws=root.parent
 with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='reports-') as temp:
@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='reports-') as temp:
             inputs=[str(src)];extra=['--bennett-llvm-major=18']
         if label in ('marker','native-marker'):
             src=pathlib.Path(temp)/'marker.ll'
-            src.write_text('define ptr @__bennett_qalloc(i64 %c,i64 %n) { ret ptr null }\ndefine void @top() { %q = call ptr @__bennett_qalloc(i64 0,i64 1)\n ret void }\n')
+            src.write_text(target_headers(23)+'define ptr @__bennett_qalloc(i64 %c,i64 %n) { ret ptr null }\ndefine void @top() { %q = call ptr @__bennett_qalloc(i64 0,i64 1)\n ret void }\n')
             inputs=[str(src)]
             if label=='native-marker':
                 bc=pathlib.Path(temp)/'native-marker.bc'
@@ -37,13 +37,13 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='reports-') as temp:
                 inputs=[];extra=['--bennett-materialised='+str(bc)]
         if label=='flag':
             f=pathlib.Path(temp)/'flag.ll'
-            f.write_text('define i32 @f() { ret i32 0 }\n!llvm.module.flags = !{!0}\n!0 = !{i32 1, !"bennett.dialect", !"0.1"}\n')
+            f.write_text(target_headers(23)+'define i32 @f() { ret i32 0 }\n!llvm.module.flags = !{!0}\n!0 = !{i32 1, !"bennett.dialect", !"0.1"}\n')
             inputs=[str(f)]
         if label=='mixed':
             inputs=[]
             for n,t in enumerate(('x86_64-unknown-linux-gnu','aarch64-unknown-linux-gnu')):
                 f=pathlib.Path(temp)/f'mixed{n}.ll'
-                f.write_text(f'target triple = "{t}"\ndefine i32 @f{n}() {{ret i32 0}}\n')
+                f.write_text('\n'.join(line for line in target_headers(23).splitlines() if not line.startswith('target triple'))+f'\ntarget triple = "{t}"\ndefine i32 @f{n}() {{ret i32 0}}\n')
                 inputs.append(str(f))
         keys={a.split('=',1)[0] for a in extra}
         extra += [a for a in flags(18 if label=='newer' else 23, plugin=label!='identity') if a.split('=',1)[0] not in keys]

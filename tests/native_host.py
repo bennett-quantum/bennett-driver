@@ -25,6 +25,13 @@ int main(int argc, char **argv) {
         out = d/f'host-{major}'
         args = [sys.argv[1], *flags(major), f'--bennett-llvm-major={major}',
                 '-bennett-dialect=0.2.10', f'--bennett-out={out}']
+        trivial = d/'trivial.c'
+        trivial.write_text('int main(void) { return 0; }\n')
+        trivialout = d/f'trivial-{major}'
+        result = run([*args[:-1], f'--bennett-out={trivialout}', trivial])
+        assert result.returncode == 0, result.stderr.decode()
+        observed = run([trivialout/'native-host'])
+        assert (observed.returncode, observed.stdout, observed.stderr) == (0, b'', b''), observed
         result = run([*args, main, helper])
         assert result.returncode == 0, result.stderr.decode()
         build = json.loads((out/'build.json').read_text())
@@ -40,7 +47,7 @@ int main(int argc, char **argv) {
         assert (observed.returncode, observed.stdout, observed.stderr) == (2, b'native argument 42\n', b''), observed
         source_link = next(c for c in build['commands'] if c['stage'] == 'native-host-link-inputs')
         assert not any('bennett-runtimes.bc' in a or 'bennett-arith.bc' in a for a in source_link['argv'])
-        nm = run([f'/usr/lib/llvm-{major}/bin/llvm-nm', '--undefined-only', out/'native-host.bc'])
+        nm = run([f'/usr/lib/llvm-{major}/bin/llvm-nm', '--undefined-only', out/'host.bc'])
         assert nm.returncode == 0 and b'printf' in nm.stdout, nm
         assert b'__rt_' not in nm.stdout and b'__bennett_dev_' not in nm.stdout, nm.stdout
         assert not list(out.glob('*/certificate.json')), 'native host has no device certificate'

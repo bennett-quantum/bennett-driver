@@ -78,6 +78,7 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
     )?;
     let materialisation = native_adapter::Adapter::select(o, m, &device)?;
     let mut protected = vec![device.clone(), runtime.clone(), arith.clone()];
+    output_paths::recorded_artifacts(&b.record, &mut protected);
     if let Some(adapter) = &materialisation {
         protected.extend([adapter.plugin.clone(), adapter.receipt.clone()]);
     }

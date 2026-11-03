@@ -17,7 +17,8 @@ assert re.fullmatch('[0-9a-f]{40}', config['tool_sha'])
 assert 0 < config['timeout_s'] <= 7200
 assert config['env']['CARGO_TARGET_DIR'].startswith('{root}/.tmp/')
 
-required = {'bennett-conformance', 'bennett-runtimes', 'bennett-arith', 'bennett-plugin'}
+required = {'bennett-conformance', 'bennett-runtimes', 'bennett-arith', 'bennett-plugin',
+            'bennett-runtimes-rung2', 'bennett-arith-rung2'}
 assert required <= config['siblings'].keys()
 for name, pin in config['siblings'].items():
     assert re.fullmatch('[0-9a-f]{40}', pin['sha']), name

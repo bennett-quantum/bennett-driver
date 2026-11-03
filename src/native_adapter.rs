@@ -6,6 +6,7 @@ pub struct Adapter {
     pub receipt: PathBuf,
     pub entry: String,
     plugin_pin: Option<String>,
+    dialect: String,
 }
 pub enum Phase {
     Prepare,
@@ -43,6 +44,7 @@ impl Adapter {
             )?,
             entry: entry.into(),
             plugin_pin: o.get("bennett-plugin-sha256").map(str::to_owned),
+            dialect: o.dialect().into(),
         }))
     }
     pub fn run(&self, b: &mut Build, major: u32, phase: Phase, input: &Path) -> Result<PathBuf> {
@@ -68,7 +70,7 @@ impl Adapter {
         };
         if matches!(phase, Phase::Prepare) {
             let plugin = artifact(&self.plugin, self.plugin_pin.as_deref())?;
-            identity(b, &self.plugin, major)?;
+            identity(b, &self.plugin, major, &self.dialect)?;
             b.record.set(
                 "native_materialisation",
                 obj([

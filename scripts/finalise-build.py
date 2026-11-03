@@ -8,7 +8,7 @@ def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
 def save(p, value): p.write_bytes(canonical(value) + b'\n')
 manifest = load(out/'manifest.json')
 launches = load(out/'launches.json')
-assert isinstance(launches, list) and launches, 'plugin emitted no launches'
+assert isinstance(launches, list), 'launch inventory must be an array'
 records = {}
 for launch in launches:
     entry = launch['entry']
@@ -19,7 +19,7 @@ for launch in launches:
     records[entry] = load(d/'build.json')
 record = dict(manifest, plugin_builds=records, build_flags=manifest['options'],
               runtimes_sha256=manifest['runtimes']['sha256'], arith_sha256=manifest['arith']['sha256'],
-              snapshot_sha256=None, asm_table_sha256=None,
+              snapshot_sha256=manifest['snapshot']['sha256'] if 'snapshot' in manifest else None, asm_table_sha256=None,
               budget_tables={k: v.get('budget_table', v.get('budgets')) for k,v in records.items()},
               layouts={k: v['layout'] for k,v in records.items()})
 raw = canonical(record)

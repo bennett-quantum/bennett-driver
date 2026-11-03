@@ -1,7 +1,7 @@
 """Use the published plugin adapter on an actual produced marked module."""
 import hashlib,json,os,pathlib,subprocess,sys,tempfile
 from contextlib import nullcontext
-from toolchain import target_headers
+from toolchain import flags, target_headers
 root=pathlib.Path(__file__).resolve().parents[1]
 def run(args):
  p=subprocess.run(list(map(str,args)),capture_output=True,timeout=120)
@@ -9,6 +9,7 @@ def run(args):
  return p.stdout
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 evidence=os.environ.get('BENNETT_DRIVER_NATIVE_EVIDENCE')
+dialect=os.environ.get('BENNETT_DRIVER_NATIVE_DIALECT', '0.2.13')
 if evidence:pathlib.Path(evidence).mkdir(parents=True,exist_ok=False)
 with (nullcontext(evidence) if evidence else tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='native-materialisation-')) as temp:
  d=pathlib.Path(temp)
@@ -24,16 +25,16 @@ define i32 @top() {
 }
 ''')
   plugin=plugin_root/f'build/libbennett-plugin-{major}.so'
-  plugin_flags=[f'--bennett-plugin={plugin}',f'--bennett-plugin-sha256={sha(plugin)}']
+  plugin_flags=[*flags(major, plugin=False),f'--bennett-plugin={plugin}',f'--bennett-plugin-sha256={sha(plugin)}']
   production=d/f'production-{major}'
-  run([sys.argv[1],f'--bennett-llvm-major={major}','-bennett-dialect=0.2.10',f'--bennett-out={production}',*plugin_flags,source])
+  run([sys.argv[1],f'--bennett-llvm-major={major}',f'-bennett-dialect={dialect}',f'--bennett-out={production}',*plugin_flags,source])
   device=production/'device.bc';digest=sha(device)
   harness=d/f'harness-{major}.c';harness.write_text('extern int top(void); int main(void) { return top()!=7; }\n')
   layout=d/f'layout-{major}.json';layout.write_text(json.dumps(dict(null_size=4096,ptr_width=64,heap_base=69632,
    heap_limit_max=1048576,globals={},interface_regions={})))
   out=d/f'native-{major}'
   result=subprocess.run([sys.argv[1],f'--bennett-llvm-major={major}',f'--bennett-materialised={device}',
-   '--bennett-comparison-entry=top',*plugin_flags,f'--bennett-native-input={harness}',f'--bennett-out={out}',
+   f'--bennett-dialect={dialect}','--bennett-comparison-entry=top',*plugin_flags,f'--bennett-native-input={harness}',f'--bennett-out={out}',
    f'--bennett-comparison-layout={layout}','--bennett-layout-data-base=65536'],capture_output=True,timeout=120)
   assert sha(device)==digest
   record=json.loads((out/'manifest.json').read_text())
@@ -55,10 +56,9 @@ define i32 @top() {
   for label,option in [('entry','--bennett-comparison-entry=missing'),
     ('plugin-pin','--bennett-plugin-sha256='+'0'*64)]:
    refused=d/f'{label}-{major}'
-   args=[sys.argv[1],f'--bennett-llvm-major={major}',f'--bennett-materialised={device}',
-    '--bennett-comparison-entry=top',f'--bennett-out={refused}',f'--bennett-plugin={plugin}']
+   args=[sys.argv[1],f'--bennett-llvm-major={major}',f'--bennett-materialised={device}',f'--bennett-dialect={dialect}',
+    option if label=='entry' else '--bennett-comparison-entry=top',f'--bennett-out={refused}',f'--bennett-plugin={plugin}']
    if label=='entry':
-    args[3]=option
     args.append(f'--bennett-comparison-launch-record={production}/top/launch-record.json')
    else:args.append(option)
    p=subprocess.run(list(map(str,args)),capture_output=True,timeout=120)

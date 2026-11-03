@@ -1,0 +1,14 @@
+# Proposed root SPEC_VERSIONS.toml update for the runner. That root file is
+# outside this job's original write allowlist; this document is not its replacement.
+status = "milestone-1-in-progress"
+dialect = "0.2.13"
+isa = "0.8"
+
+[commits]
+"bennett-dialect-spec" = "95a4b8d06933018a07fef3516296a25fd582fcde"
+
+[historical_regression]
+dialect = "0.2.10"
+isa = "0.8"
+dialect_commit = "023f5a771a814270634db3be9cfde88ded69f975"
+plugin_commit = "157d4bd1fab98afed8579b2367f26d1d742b0173"
