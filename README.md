@@ -73,3 +73,5 @@ tracked rung-2 fixture have separate named `--ignored` reports in `gate.toml`;
 those tests keep their full success assertions. Timing, coverage and the structural
 quality baseline are recorded in [docs/quality.md](docs/quality.md).
 `scripts/pre-push` delegates each pushed SHA to the pinned local gate tool.
+
+Current programme handoff: [bennett/HANDOFF.md](../bennett/HANDOFF.md).
