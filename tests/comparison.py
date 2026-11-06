@@ -27,11 +27,9 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='comparison-') as tmp:
         assert '@__bennett_rt_native_layout = constant { i64, i64, i64 } { i64 1, i64 69632, i64 1048576 }, align 8' in table
         for level in ('O0','O2'):
             r=next(r for r in records if r.get('variant')==level)
-            a=r['link_argv'];assert all(x in a for x in ('-nostdlib','-nostdinc','-static','-no-pie'))
             obj=pathlib.Path(r['codegen_object']['path'])
             assert hashlib.sha256(obj.read_bytes()).hexdigest()==r['codegen_object']['sha256']
-            assert r['provenance']=='explicit module; producer receipt not verified'
-            assert not any(x in a for x in ('-lc','-lm','-fsanitize=address,undefined'))
+            assert r['materialised_sha256'] == hashlib.sha256((d/'device.bc').read_bytes()).hexdigest()
             assert run([out/f'native-{level}'])==b''
             assert not run([llvm/'llvm-nm','--undefined-only',out/f'native-{level}']).strip()
             assert b'INTERP' not in run(['readelf','-l',out/f'native-{level}'])

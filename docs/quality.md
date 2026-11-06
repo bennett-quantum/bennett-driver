@@ -29,3 +29,18 @@ Five least-covered Rust modules in that run:
 | main | 89.91% | Option and stage boundary unit tests are part of the next refactor, alongside the existing target/alias/metadata matrices. |
 | report | 90.32% | Structured error/code/exit integration tests execute the principal report classes; secondary report-write failure requires filesystem fault injection. |
 | output_paths | 90.62% | Direct/canonical/symlink/hardlink/prior-artifact alias matrices execute real filesystem protection; uncommon metadata/read failures remain platform paths. |
+
+Test quality pass: the merge differential runs actual `postlink.bc` under lazy
+`lli` for LLVM 18/23 against an independently source-compiled native executable
+and nine hand-derived `7*n + 13` results. Changing the helper to `8*n + 13`
+provides a negative oracle control. It does not depend on the blocked rung-2
+fixture. Native comparison tests retain ELF/import/execution and input-hash
+oracles and remove redundant flag/provenance-literal assertions. Classifier tests
+execute a real out-of-bounds input and inspect its UBSan failure instead of
+asserting hard-coded coverage booleans. JSON tests cover Unicode, all special
+control-escape classes and exact u64 maximum output.
+
+The hook fixture checks this repo's pin inputs and delegation stub; protocol
+execution belongs to the pinned gate tool's selftests. Reversible blocked output
+is component evidence only: full producer acceptance remains in the open producer
+beads and the unchanged promised tests, not an existence-only success claim.

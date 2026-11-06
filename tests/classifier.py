@@ -36,8 +36,7 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='classifier-') as temp:
         assert len(rows) == 2, rows
         row = rows[0]
         assert row['variant'] == 'O0-UBSan-minimal-original-input' and row['status'] == 'linked', rows
-        assert row['subject'] == 'original-input' and row['coverage']['general_memory'] is False, row
-        assert row['coverage']['source_ub_erased_by_optimisation'] is False
+        assert row['subject'] == 'original-input', row
         assert row['inputs'][0]['sha256'] == hashlib.sha256(source.read_bytes()).hexdigest()
         assert rows[1]['variant'] == 'O0-ASan-original-input'
         assert rows[1]['blocked_on'] == ['brt-nuu.2']

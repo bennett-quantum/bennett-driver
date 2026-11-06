@@ -234,3 +234,8 @@ mod reversible {
         support::fixture("reversible.py");
     }
 }
+
+#[test]
+fn merged_module_executes_like_independent_native_sources() {
+    support::fixture("merged_module.py");
+}
