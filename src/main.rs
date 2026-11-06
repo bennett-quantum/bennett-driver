@@ -723,6 +723,10 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
             .iter()
             .any(|key| o.get(key).is_some());
     if !device_mode && !reserved_symbols {
+        if o.get("bennett-comparison") == Some("true") {
+            return Err("BD-E-NATIVE-COMPARISON: no selected device entry; strict device comparison requires a materialised device module".into());
+        }
+        b.record.set("unused_device_options", strings(&o.plugin_args));
         native_host::build(o, b, m, &modules, pipeline)?;
         return finalise_build(b);
     }

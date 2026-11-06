@@ -35,6 +35,19 @@ int main(int argc, char **argv) {
         assert result.returncode == 0, result.stderr.decode()
         observed = run([trivialout/'native-host'])
         assert (observed.returncode, observed.stdout, observed.stderr) == (0, b'', b''), observed
+        controls = ['-bennett-closed-unit', '--bennett-class=alpha', '--bennett-vscale=2', '--bennett-bind=x=y']
+        controlout = d/f'controls-{major}'
+        result = run([*args[:-1], f'--bennett-out={controlout}', *controls, trivial])
+        assert result.returncode == 0, result.stderr.decode()
+        control_build = json.loads((controlout/'build.json').read_text())
+        assert control_build['unused_device_options'] == [
+            '-bennett-closed-unit=true', '-bennett-class=alpha', '-bennett-vscale=2', '-bennett-bind=x=y'], control_build
+        assert run([controlout/'native-host']).returncode == 0
+        compareout = d/f'no-device-comparison-{major}'
+        result = run([*args[:-1], f'--bennett-out={compareout}', '--bennett-comparison=true', trivial])
+        assert result.returncode != 0 and b'BD-E-NATIVE-COMPARISON' in result.stderr, result.stderr
+        assert not (compareout/'build.json').exists(), 'failed comparison must not publish a complete build'
+        assert json.loads((compareout/'manifest.json').read_text())['status'] == 'failed'
         for label,metadata in [('empty', '!llvm.module.flags = !{}\n'),
             ('matching', '!llvm.module.flags = !{!0}\n!0 = !{i32 1, !"bennett.dialect", !"0.2.10"}\n'),
             ('unrelated', '!unrelated = !{!0}\n!0 = !{i32 1, !"bennett.dialect", !"0.1"}\n')]:
