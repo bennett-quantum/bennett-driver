@@ -23,6 +23,8 @@ const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired
 #[derive(Debug)]
 struct Options {
     values: BTreeMap<String, String>,
+    paths: BTreeMap<&'static str, PathBuf>,
+    sysroot: Option<Sysroot>,
     inputs: Vec<PathBuf>,
     plugin_args: Vec<String>,
 }
@@ -30,6 +32,8 @@ impl Options {
     fn parse(args: &[String]) -> Result<Self> {
         let mut o = Self {
             values: BTreeMap::new(),
+            paths: BTreeMap::new(),
+            sysroot: None,
             inputs: vec![],
             plugin_args: vec![],
         };
@@ -215,6 +219,21 @@ impl Options {
         } else if o.get("bennett-entry").is_some() {
             return Err("BD-E-INPUT: --bennett-entry requires --bennett-tier=reversible".into());
         }
+        for key in [
+            "bennett-plugin",
+            "bennett-runtimes",
+            "bennett-arith",
+            "bennett-arith-generator",
+            "bennett-native-check",
+            "bennett-native-support",
+        ] {
+            if let Some(path) = resolve_path(&o, key)? {
+                o.paths.insert(key, path);
+            }
+        }
+        o.sysroot = resolve_path(&o, "bennett-sysroot")?
+            .map(Sysroot::new)
+            .transpose()?;
         Ok(o)
     }
     fn get(&self, key: &str) -> Option<&str> {
@@ -232,6 +251,37 @@ impl Options {
     fn dialect(&self) -> &str {
         self.get("bennett-dialect").unwrap()
     }
+    fn required_sysroot(&self) -> Result<&Sysroot> {
+        self.sysroot.as_ref().ok_or_else(|| {
+            "BD-E-CONFIG: missing --bennett-sysroot=PATH or BENNETT_DRIVER_SYSROOT".into()
+        })
+    }
+}
+#[derive(Debug)]
+struct Sysroot {
+    root: PathBuf,
+}
+impl Sysroot {
+    fn new(root: PathBuf) -> Result<Self> {
+        fs::read_dir(root.join("include")).map_err(|e| {
+            format!(
+                "BD-E-CONFIG: unusable sysroot {}: cannot read include directory: {e}",
+                root.display()
+            )
+        })?;
+        Ok(Self { root })
+    }
+    fn link_flag(&self) -> String {
+        format!("--sysroot={}", self.root.display())
+    }
+    fn frontend_flags(&self) -> Vec<String> {
+        vec![
+            self.link_flag(),
+            "-nostdinc".into(),
+            "-isystem".into(),
+            self.root.join("include").display().to_string(),
+        ]
+    }
 }
 fn absolute(p: impl AsRef<Path>) -> Result<PathBuf> {
     let p = p.as_ref();
@@ -248,6 +298,16 @@ fn read(path: impl AsRef<Path>) -> Result<String> {
     fs::read_to_string(path.as_ref()).map_err(|e| format!("read {}: {e}", path.as_ref().display()))
 }
 fn configured_path(o: &Options, key: &str) -> Result<PathBuf> {
+    o.paths.get(key).cloned().ok_or_else(|| {
+        format!(
+            "BD-E-CONFIG: missing --{key}=PATH or BENNETT_DRIVER_{}",
+            key.trim_start_matches("bennett-")
+                .to_uppercase()
+                .replace('-', "_")
+        )
+    })
+}
+fn resolve_path(o: &Options, key: &str) -> Result<Option<PathBuf>> {
     let variable = format!(
         "BENNETT_DRIVER_{}",
         key.trim_start_matches("bennett-")
@@ -257,13 +317,16 @@ fn configured_path(o: &Options, key: &str) -> Result<PathBuf> {
     let path = o
         .get(key)
         .map(PathBuf::from)
-        .or_else(|| {
-            env::var_os(&variable)
-                .filter(|value| !value.is_empty())
-                .map(PathBuf::from)
-        })
-        .ok_or_else(|| format!("BD-E-CONFIG: missing --{key}=PATH or {variable}"))?;
-    absolute(path)
+        .or_else(|| env::var_os(&variable).map(PathBuf::from));
+    path.map(|path| {
+        if path.as_os_str().is_empty() {
+            return Err(format!(
+                "BD-E-CONFIG: empty {variable}; provide --{key}=PATH or unset it"
+            ));
+        }
+        absolute(path)
+    })
+    .transpose()
 }
 fn task_tmpdir() -> Result<PathBuf> {
     env::var_os("TMPDIR")
@@ -402,20 +465,6 @@ fn close_libraries(
         b.run(stage, args, None)?;
     }
 }
-fn sysroot_flags(o: &Options) -> Result<Vec<String>> {
-    match o.get("bennett-sysroot") {
-        None => Ok(vec![]),
-        Some(p) => {
-            let p = absolute(p)?;
-            Ok(vec![
-                format!("--sysroot={}", p.display()),
-                "-nostdinc".into(),
-                "-isystem".into(),
-                p.join("include").display().to_string(),
-            ])
-        }
-    }
-}
 fn tool(major: u32, name: &str) -> String {
     format!("/usr/lib/llvm-{major}/bin/{name}")
 }
@@ -538,7 +587,9 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
                     "-o".into(),
                     out.display().to_string(),
                 ];
-                frontend.extend(sysroot_flags(o)?);
+                if let Some(sysroot) = &o.sysroot {
+                    frontend.extend(sysroot.frontend_flags());
+                }
                 b.run("frontend", frontend, None)?;
                 out
             }

@@ -53,8 +53,8 @@ pub fn build(
     } else {
         codegen.push("-c".into());
     }
-    if let Some(sysroot) = o.get("bennett-sysroot") {
-        codegen.push(format!("--sysroot={}", absolute(sysroot)?.display()));
+    if let Some(sysroot) = &o.sysroot {
+        codegen.push(sysroot.link_flag());
     }
     b.run("native-host-codegen", codegen, None)?;
     write(b.out.join("launches.json"), "[]\n")?;

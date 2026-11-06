@@ -6,7 +6,7 @@ pub fn build(o: &Options, b: &mut Build, major: u32, arith: &Path) -> Result<()>
     let publication = runtime
         .parent()
         .ok_or("BD-E-CONFIG: runtime has no publication directory")?;
-    let sysroot = configured_path(o, "bennett-sysroot")?;
+    let sysroot = o.required_sysroot()?;
     let mut sources = match o.get("bennett-classifier-input") {
         Some(p) => vec![absolute(p)?],
         None => o.inputs.iter().map(absolute).collect::<Result<Vec<_>>>()?,
@@ -54,9 +54,6 @@ pub fn build(o: &Options, b: &mut Build, major: u32, arith: &Path) -> Result<()>
                 "-ffreestanding".into(),
                 "-fno-builtin".into(),
                 "-fno-pie".into(),
-                "-nostdinc".into(),
-                "-isystem".into(),
-                sysroot.join("include").display().to_string(),
                 "-fsanitize=undefined".into(),
                 "-fsanitize-minimal-runtime".into(),
                 "-fno-sanitize-recover=all".into(),
@@ -66,7 +63,7 @@ pub fn build(o: &Options, b: &mut Build, major: u32, arith: &Path) -> Result<()>
                 "-o".into(),
                 module.display().to_string(),
             ];
-            args.extend(sysroot_flags(o)?);
+            args.extend(sysroot.frontend_flags());
             b.run("classifier-frontend", args, None)?;
             modules.push(module.display().to_string());
         }

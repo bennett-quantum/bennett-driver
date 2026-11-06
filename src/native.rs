@@ -59,7 +59,7 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
     let arith = configured_path(o, "bennett-arith")?;
     let adapter = configured_path(o, "bennett-native-check")?;
     let support = configured_path(o, "bennett-native-support")?;
-    let sysroot = configured_path(o, "bennett-sysroot")?;
+    let sysroot = o.required_sysroot()?;
     let record_path = absolute(
         o.get("bennett-comparison-record")
             .map(PathBuf::from)
@@ -77,12 +77,10 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         protected.extend([adapter.plugin.clone(), adapter.receipt.clone()]);
     }
     protected.extend(o.inputs.iter().map(absolute).collect::<Result<Vec<_>>>()?);
+    protected.extend(o.paths.values().cloned());
     for key in [
-        "bennett-plugin",
         "bennett-native-input",
         "bennett-native-backend",
-        "bennett-native-support",
-        "bennett-native-check",
         "bennett-classifier-input",
         "bennett-comparison-layout",
         "bennett-budgets",
@@ -93,7 +91,7 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
             protected.push(absolute(path)?);
         }
     }
-    protected.extend([adapter.clone(), support.clone(), sysroot.clone()]);
+    protected.push(sysroot.root.clone());
     let mut destinations = vec![
         ("comparison record", record_path.clone()),
         ("O2 executable", exe.clone()),
@@ -182,12 +180,7 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
                 "-o".into(),
                 output.display().to_string(),
             ];
-            support.extend([
-                "-nostdinc".into(),
-                "-isystem".into(),
-                sysroot.join("include").display().to_string(),
-            ]);
-            support.extend(sysroot_flags(o)?);
+            support.extend(sysroot.frontend_flags());
             b.run("native-support", support, None)?;
             audit_markers(b, m, &output)?;
             extras.push(output.display().to_string());
@@ -471,9 +464,7 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
             "-fno-merge-all-constants".into(),
             code_input.display().to_string(),
         ];
-        if let Some(root) = o.get("bennett-sysroot") {
-            argv.push(format!("--sysroot={}", absolute(root)?.display()));
-        }
+        argv.push(sysroot.link_flag());
         argv.extend([
             format!("-Wl,-T,{}", script.display()),
             "-Wl,-e,_start".into(),

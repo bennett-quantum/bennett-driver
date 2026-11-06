@@ -1,5 +1,5 @@
 """Unmarked modules retain the ordinary native process and libc."""
-import hashlib, json, pathlib, subprocess, sys, tempfile
+import hashlib, json, os, pathlib, subprocess, sys, tempfile
 from toolchain import flags, target_headers, configure, sibling
 
 root = pathlib.Path(__file__).resolve().parents[1]
@@ -26,6 +26,8 @@ int main(int argc, char **argv) {
         out = d/f'host-{major}'
         args = [sys.argv[1], *flags(major), f'--bennett-llvm-major={major}',
                 '-bennett-dialect=0.2.10', f'--bennett-out={out}']
+        # This fixture requests the ordinary host libc rather than the freestanding sysroot.
+        os.environ.pop('BENNETT_DRIVER_SYSROOT', None)
         trivial = d/'trivial.c'
         trivial.write_text('int main(void) { return 0; }\n')
         trivialout = d/f'trivial-{major}'

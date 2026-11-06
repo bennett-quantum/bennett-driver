@@ -1,10 +1,10 @@
 """Exercise the producer's real offline generator, not a numerical stub."""
 from toolchain import configure, sibling
-import hashlib, json, pathlib, subprocess, sys, tempfile
+import hashlib, json, os, pathlib, shutil, subprocess, sys, tempfile
 
 root = pathlib.Path(__file__).resolve().parents[1]
-def run(args):
-    p = subprocess.run(list(map(str,args)), capture_output=True, timeout=240)
+def run(args, **kwargs):
+    p = subprocess.run(list(map(str,args)), capture_output=True, timeout=240, **kwargs)
     assert p.returncode == 0, p.stderr.decode()
     return p.stdout
 def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
@@ -12,7 +12,7 @@ def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
 with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='arith-instances-') as temp:
     d = pathlib.Path(temp)
     for major in (18,23):
-        configure(major)
+        paths = configure(major)
         llvm = pathlib.Path(f'/usr/lib/llvm-{major}/bin')
         seed = d/f'seed-{major}.c';seed.write_text('int main(void) { return 0; }')
         header = run([llvm/'clang','-S','-emit-llvm',seed,'-o','-']).decode()
@@ -38,9 +38,18 @@ define i32 @main() {
         layout.write_text(json.dumps(dict(null_size=4096,ptr_width=64,heap_base=258048,
             heap_limit_max=1048576,globals={},interface_regions={})))
         out = d/f'out-{major}'
-        run([sys.argv[1], f'--bennett-llvm-major={major}', f'--bennett-materialised={ir}',
+        args = [sys.argv[1], f'--bennett-llvm-major={major}', f'--bennett-materialised={ir}',
             f'--bennett-out={out}', f'--bennett-comparison-layout={layout}',
-            '--bennett-layout-data-base=249856'])
+            '--bennett-layout-data-base=249856']
+        run(args)
+        commands = [(c['stage'], c['argv']) for c in json.loads((out/'manifest.json').read_text())['commands']]
+        assert 'arith-generate' in [stage for stage, _ in commands]
+        for level in ('O0','O2'): assert run([out/f'native-{level}']) == b''
+        shutil.rmtree(out)
+        flags = [f'--bennett-{key}={path}' for key, path in paths.items()]
+        environment = {key: value for key, value in os.environ.items() if not key.startswith('BENNETT_DRIVER_')}
+        run([*args, *flags], env=environment)
+        assert commands == [(c['stage'], c['argv']) for c in json.loads((out/'manifest.json').read_text())['commands']]
         assert sha(ir) == digest
         request = json.loads((out/'arith-request.json').read_text())
         assert request['entries'] == [dict(op='powi',base='f32',exponent_bits=k) for k in (7,193)], request
