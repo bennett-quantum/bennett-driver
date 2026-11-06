@@ -82,8 +82,15 @@ mod tests {
     use super::*;
     #[test]
     fn json_unicode_control_characters_and_exact_integer_boundary() {
-        let value = Json::Array(vec!["\u{8}\u{c}\r\t λ😀".into(), Json::Num(u64::MAX), false.into()]);
-        assert_eq!(value.encode(), "[\"\\u0008\\u000c\\r\\t λ😀\",18446744073709551615,false]");
+        let value = Json::Array(vec![
+            "\u{8}\u{c}\r\t λ😀".into(),
+            Json::Num(u64::MAX),
+            false.into(),
+        ]);
+        assert_eq!(
+            value.encode(),
+            "[\"\\u0008\\u000c\\r\\t λ😀\",18446744073709551615,false]"
+        );
     }
     #[test]
     fn canonical_keys_and_escapes() {

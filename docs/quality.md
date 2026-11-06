@@ -44,3 +44,14 @@ The hook fixture checks this repo's pin inputs and delegation stub; protocol
 execution belongs to the pinned gate tool's selftests. Reversible blocked output
 is component evidence only: full producer acceptance remains in the open producer
 beads and the unchanged promised tests, not an existence-only success claim.
+
+Stage refactor validation: 17 unit tests pass with
+`timeout 90 cargo test --offline -j3 --bin bennett-driver -- --nocapture --test-threads=4`;
+`timeout 90 cargo clippy --offline -j3 --all-targets -- -D warnings` passes.
+An old/new executable differential (`timeout 180 python3 .tmp/quality-driver/byte_identity.py`)
+reused identical input/output paths and hashed every emitted file: LLVM 18 and 23
+native-only builds (49 files each), device builds (49 each), and strict comparison
+builds (82 each) were byte-identical. The independent merged-module fixture also
+passes after the refactor. Typed option keys and execution controls have one parser
+and one default owner; production environment/admission/link/lowering and comparison
+admission/check/layout-and-closure/codegen stages each have a direct unit test.

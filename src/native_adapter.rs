@@ -15,8 +15,11 @@ pub enum Phase {
 }
 impl Adapter {
     pub fn select(o: &Options, _major: u32, device: &Path) -> Result<Option<Self>> {
-        let Some(entry) = o.get("bennett-comparison-entry").or(o.get("bennett-entry")) else {
-            if o.get("bennett-comparison-launch-record").is_some() {
+        let Some(entry) = o
+            .get(OptionKey::ComparisonEntry)
+            .or(o.get(OptionKey::Entry))
+        else {
+            if o.get(OptionKey::ComparisonLaunchRecord).is_some() {
                 return Err(
                     "BD-E-INPUT: comparison launch record requires a selected comparison entry"
                         .into(),
@@ -25,9 +28,9 @@ impl Adapter {
             return Ok(None);
         };
         Ok(Some(Self {
-            plugin: configured_path(o, "bennett-plugin")?,
+            plugin: configured_path(o, OptionKey::Plugin)?,
             receipt: absolute(
-                o.get("bennett-comparison-launch-record")
+                o.get(OptionKey::ComparisonLaunchRecord)
                     .map(PathBuf::from)
                     .unwrap_or(
                         device
@@ -38,7 +41,7 @@ impl Adapter {
                     ),
             )?,
             entry: entry.into(),
-            plugin_pin: o.get("bennett-plugin-sha256").map(str::to_owned),
+            plugin_pin: o.get(OptionKey::PluginSha256).map(str::to_owned),
             dialect: o.dialect().into(),
         }))
     }

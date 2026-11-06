@@ -30,10 +30,10 @@ pub fn prepare(
     if needed.trim() != "required" {
         return Err("BD-E-ARITH-INSTANCES: collector returned no verdict".into());
     }
-    let generator = configured_path(o, "bennett-arith-generator")?;
+    let generator = configured_path(o, OptionKey::ArithGenerator)?;
     b.record.set(
         "arith_generator",
-        artifact(&generator, o.get("bennett-arith-generator-sha256"))?,
+        artifact(&generator, o.get(OptionKey::ArithGeneratorSha256))?,
     );
     let request = b.out.join("arith-request.json");
     b.record.set("arith_request", artifact(&request, None)?);

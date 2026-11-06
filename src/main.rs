@@ -6,6 +6,7 @@ mod mode_preparation;
 mod native;
 mod native_adapter;
 mod native_host;
+mod options;
 mod output_paths;
 mod process;
 mod report;
@@ -20,243 +21,7 @@ type Result<T> = std::result::Result<T, String>;
 const DIALECT: &str = "0.2.13";
 const ISA: &str = "0.8";
 const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.13 (historical 0.2.10 accepted explicitly) -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8,\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-arith-generator=FILE --bennett-native-check=FILE --bennett-sysroot=DIR\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n --bennett-snapshot=FILE --bennett-class=NAME --bennett-vscale=V\n -bennett-closed-unit --bennett-oracle=SYMBOL (requires callable wrapper handoff)\n --bennett-emit=process-bitcode (preparation stage; manifest status prepared)\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-comparison-entry=SYMBOL --bennett-comparison-launch-record=FILE\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n --bennett-classifier-input=FILE (original C, UBSan-minimal diagnostic)\n Plain O2 comparison and O0 diagnostic; full ASan requires its freestanding runtime publication\n Environment: TMPDIR is required. External paths also accept BENNETT_DRIVER_ followed by\n PLUGIN, RUNTIMES, ARITH, ARITH_GENERATOR, NATIVE_CHECK, NATIVE_SUPPORT or SYSROOT.\n";
-#[derive(Debug)]
-struct Options {
-    values: BTreeMap<String, String>,
-    paths: BTreeMap<&'static str, PathBuf>,
-    sysroot: Option<Sysroot>,
-    inputs: Vec<PathBuf>,
-    plugin_args: Vec<String>,
-}
-impl Options {
-    fn parse(args: &[String]) -> Result<Self> {
-        let mut o = Self {
-            values: BTreeMap::new(),
-            paths: BTreeMap::new(),
-            sysroot: None,
-            inputs: vec![],
-            plugin_args: vec![],
-        };
-        let mut positional = false;
-        for arg in args {
-            if arg == "--" {
-                positional = true;
-                continue;
-            }
-            if !positional && arg.starts_with('-') {
-                let clean = arg.trim_start_matches('-');
-                let (key, value) = match clean.split_once('=') {
-                    Some(pair) => pair,
-                    None if matches!(clean, "bennett-closed-unit" | "bennett-warn-qstore") => {
-                        (clean, "true")
-                    }
-                    None => return Err(format!("BD-E-INPUT: option requires =value: {arg}")),
-                };
-                let driver = matches!(
-                    key,
-                    "bennett-dialect"
-                        | "bennett-isa"
-                        | "bennett-out"
-                        | "bennett-llvm-major"
-                        | "bennett-plugin"
-                        | "bennett-runtimes"
-                        | "bennett-arith"
-                        | "bennett-plugin-sha256"
-                        | "bennett-runtimes-sha256"
-                        | "bennett-arith-sha256"
-                        | "bennett-arith-generator"
-                        | "bennett-arith-generator-sha256"
-                        | "bennett-pipeline"
-                        | "bennett-emit"
-                        | "bennett-materialised"
-                        | "bennett-comparison-entry"
-                        | "bennett-comparison-launch-record"
-                        | "bennett-comparison-record"
-                        | "bennett-comparison-output"
-                        | "bennett-sysroot"
-                        | "bennett-native-input"
-                        | "bennett-native-backend"
-                        | "bennett-native-support"
-                        | "bennett-native-support-sha256"
-                        | "bennett-native-check"
-                        | "bennett-native-check-sha256"
-                        | "bennett-classifier-input"
-                        | "bennett-comparison-layout"
-                        | "bennett-layout-data-base"
-                        | "bennett-layout-text-base"
-                        | "bennett-comparison"
-                        | "bennett-argv-replies"
-                );
-                let pass = matches!(
-                    key,
-                    "bennett-budget-default"
-                        | "bennett-analysis-budget-ms"
-                        | "bennett-budgets"
-                        | "bennett-tier"
-                        | "bennett-entry"
-                        | "bennett-disk"
-                        | "bennett-oracle"
-                        | "bennett-bind"
-                        | "bennett-dev"
-                        | "bennett-payload"
-                        | "bennett-snapshot"
-                        | "bennett-closed-unit"
-                        | "bennett-platform"
-                        | "bennett-platform-ram"
-                        | "bennett-class"
-                        | "bennett-vscale"
-                        | "bennett-cpu"
-                        | "bennett-qreg-instances"
-                        | "bennett-inplace-exhaustive-bits"
-                        | "bennett-warn-qstore"
-                        | "bennett-arena-heap"
-                );
-                if !driver && !pass {
-                    return Err(format!(
-                        "BD-E-INPUT: unimplemented driver option {arg}; capability remains required by dialect §19"
-                    ));
-                }
-                if value.is_empty() {
-                    return Err(format!("BD-E-INPUT: empty option {key}"));
-                }
-                if matches!(key, "bennett-closed-unit" | "bennett-warn-qstore")
-                    && !matches!(value, "true" | "false")
-                {
-                    return Err(format!("BD-E-INPUT: {key} requires true|false"));
-                }
-                let repeatable = matches!(key, "bennett-bind" | "bennett-dev" | "bennett-class");
-                if o.values.contains_key(key) && !repeatable {
-                    return Err(format!("BD-E-INPUT: empty or duplicate option {key}"));
-                }
-                o.values.entry(key.into()).or_insert_with(|| value.into());
-                if pass {
-                    o.plugin_args.push(format!(
-                        "{}{}={value}",
-                        if matches!(key, "bennett-tier" | "bennett-entry" | "bennett-disk") {
-                            "--"
-                        } else {
-                            "-"
-                        },
-                        key
-                    ));
-                }
-            } else {
-                o.inputs.push(PathBuf::from(arg));
-            }
-        }
-        let adapter = o.get("bennett-materialised").is_some();
-        if let Some(emit) = o.get("bennett-emit")
-            && (emit != "process-bitcode"
-                || adapter
-                || o.get("bennett-tier") != Some("reversible")
-                || o.get("bennett-comparison") == Some("true"))
-        {
-            return Err("BD-E-INPUT: --bennett-emit=process-bitcode requires a reversible process entry and excludes materialised/comparison mode".into());
-        }
-        if adapter && o.get("bennett-dialect").is_none() {
-            o.values.insert("bennett-dialect".into(), DIALECT.into());
-        }
-        if adapter && o.get("bennett-out").is_none() {
-            let path = Path::new(o.get("bennett-materialised").unwrap())
-                .parent()
-                .unwrap_or(Path::new("."));
-            let out = path.join("native-work").display().to_string();
-            o.values.insert("bennett-out".into(), out);
-        }
-        if !matches!(o.get("bennett-dialect"), Some("0.2.10" | "0.2.13"))
-            || o.get("bennett-isa").unwrap_or(ISA) != ISA
-        {
-            return Err(
-                "BD-E-VERSION: required dialect 0.2.13 (or explicit historical 0.2.10) and ISA 0.8"
-                    .into(),
-            );
-        }
-        if o.get("bennett-out").is_none() || (o.inputs.is_empty() && !adapter) {
-            return Err("BD-E-INPUT: -bennett-out and at least one input required".into());
-        }
-        o.major()?;
-        if let Some(value) = o.get("bennett-comparison")
-            && !matches!(value, "true" | "false")
-        {
-            return Err("BD-E-INPUT: --bennett-comparison=true|false required".into());
-        }
-        if o.get("bennett-pipeline")
-            .is_some_and(|p| p.contains("view-"))
-        {
-            return Err("BD-E-INPUT: LLVM view-* is forbidden in headless mode".into());
-        }
-        if !adapter
-            && o.get("bennett-comparison") != Some("true")
-            && o.values.keys().any(|k| {
-                matches!(
-                    k.as_str(),
-                    "bennett-native-input"
-                        | "bennett-native-backend"
-                        | "bennett-native-support"
-                        | "bennett-native-support-sha256"
-                        | "bennett-native-check"
-                        | "bennett-native-check-sha256"
-                        | "bennett-classifier-input"
-                        | "bennett-comparison-layout"
-                        | "bennett-comparison-entry"
-                        | "bennett-comparison-launch-record"
-                        | "bennett-comparison-record"
-                        | "bennett-comparison-output"
-                        | "bennett-layout-data-base"
-                        | "bennett-layout-text-base"
-                )
-            })
-        {
-            return Err("BD-E-INPUT: comparison options require --bennett-comparison=true or --bennett-materialised".into());
-        }
-        if o.get("bennett-argv-replies").is_some() && o.get("bennett-tier") != Some("reversible") {
-            return Err("BD-E-INPUT: argv replies require --bennett-tier=reversible".into());
-        }
-        if let Some(tier) = o.get("bennett-tier") {
-            if tier != "reversible" || o.get("bennett-entry").is_none() {
-                return Err("BD-E-INPUT: §19.2 requires --bennett-tier=reversible and --bennett-entry=SYMBOL".into());
-            }
-        } else if o.get("bennett-entry").is_some() {
-            return Err("BD-E-INPUT: --bennett-entry requires --bennett-tier=reversible".into());
-        }
-        for key in [
-            "bennett-plugin",
-            "bennett-runtimes",
-            "bennett-arith",
-            "bennett-arith-generator",
-            "bennett-native-check",
-            "bennett-native-support",
-        ] {
-            if let Some(path) = resolve_path(&o, key)? {
-                o.paths.insert(key, path);
-            }
-        }
-        o.sysroot = resolve_path(&o, "bennett-sysroot")?
-            .map(Sysroot::new)
-            .transpose()?;
-        Ok(o)
-    }
-    fn get(&self, key: &str) -> Option<&str> {
-        self.values.get(key).map(String::as_str)
-    }
-    fn major(&self) -> Result<u32> {
-        match self.get("bennett-llvm-major").unwrap_or("23") {
-            "18" => Ok(18),
-            "23" => Ok(23),
-            v => Err(format!(
-                "BD-E-VERSION: unsupported envelope LLVM major {v}; expected 18 or 23"
-            )),
-        }
-    }
-    fn dialect(&self) -> &str {
-        self.get("bennett-dialect").unwrap()
-    }
-    fn required_sysroot(&self) -> Result<&Sysroot> {
-        self.sysroot.as_ref().ok_or_else(|| {
-            "BD-E-CONFIG: missing --bennett-sysroot=PATH or BENNETT_DRIVER_SYSROOT".into()
-        })
-    }
-}
+use options::{Emission, OptionKey, Options, Tier};
 #[derive(Debug)]
 struct Sysroot {
     root: PathBuf,
@@ -297,20 +62,22 @@ fn write(path: impl AsRef<Path>, content: impl AsRef<[u8]>) -> Result<()> {
 fn read(path: impl AsRef<Path>) -> Result<String> {
     fs::read_to_string(path.as_ref()).map_err(|e| format!("read {}: {e}", path.as_ref().display()))
 }
-fn configured_path(o: &Options, key: &str) -> Result<PathBuf> {
-    o.paths.get(key).cloned().ok_or_else(|| {
+fn configured_path(o: &Options, key: OptionKey) -> Result<PathBuf> {
+    o.paths.get(&key).cloned().ok_or_else(|| {
         format!(
             "BD-E-CONFIG: missing --{key}=PATH or BENNETT_DRIVER_{}",
-            key.trim_start_matches("bennett-")
+            key.as_str()
+                .trim_start_matches("bennett-")
                 .to_uppercase()
                 .replace('-', "_")
         )
     })
 }
-fn resolve_path(o: &Options, key: &str) -> Result<Option<PathBuf>> {
+fn resolve_path(o: &Options, key: OptionKey) -> Result<Option<PathBuf>> {
     let variable = format!(
         "BENNETT_DRIVER_{}",
-        key.trim_start_matches("bennett-")
+        key.as_str()
+            .trim_start_matches("bennett-")
             .to_uppercase()
             .replace('-', "_")
     );
@@ -517,54 +284,238 @@ fn admit_dialect_flag(ir: &str, expected: &str) -> Result<()> {
     }
     Ok(())
 }
-fn execute(o: &Options, b: &mut Build) -> Result<()> {
-    let m = o.major()?;
-    let runtime = configured_path(o, "bennett-runtimes")?;
-    let arith = configured_path(o, "bennett-arith")?;
-    let plugin = configured_path(o, "bennett-plugin")?;
-    for (key, p) in [
-        ("runtimes", &runtime),
-        ("arith", &arith),
-        ("plugin", &plugin),
-    ] {
-        b.record
-            .set(key, artifact(p, o.get(&format!("bennett-{key}-sha256")))?);
+struct Environment {
+    m: u32,
+    runtime: PathBuf,
+    arith: PathBuf,
+    plugin: PathBuf,
+}
+struct AdmittedInputs {
+    modules: Vec<String>,
+    input_ir: Vec<PathBuf>,
+}
+struct LinkedProgram {
+    arith: PathBuf,
+    linked: PathBuf,
+    prepared_path: PathBuf,
+}
+impl Environment {
+    fn inspect(o: &Options, b: &mut Build) -> Result<Self> {
+        let m = o.major;
+        let runtime = configured_path(o, OptionKey::Runtimes)?;
+        let arith = configured_path(o, OptionKey::Arith)?;
+        let plugin = configured_path(o, OptionKey::Plugin)?;
+        for (key, pin, p) in [
+            ("runtimes", OptionKey::RuntimesSha256, &runtime),
+            ("arith", OptionKey::ArithSha256, &arith),
+            ("plugin", OptionKey::PluginSha256, &plugin),
+        ] {
+            b.record.set(key, artifact(p, o.get(pin))?);
+        }
+        identity(b, &plugin, m, o.dialect())?;
+        // Identity was obtained from the exported ABI, not a string search in the .so.
+        let mut p = artifact(&plugin, None)?;
+        p.set(
+            "identity",
+            format!("dialect-{};isa-{ISA}", o.dialect()).into(),
+        );
+        b.record.set("plugin", p);
+        let mut versions = vec![];
+        for name in ["clang", "llvm-link", "opt"] {
+            let v = b.run(
+                &format!("version-{name}"),
+                vec![tool(m, name), "--version".into()],
+                None,
+            )?;
+            if !v.contains(&format!("version {m}.")) && !v.contains(&format!("LLD {m}.")) {
+                return Err(format!("BD-E-VERSION: {name} is not LLVM {m}: {v}"));
+            }
+            versions.push((name, v.into()));
+        }
+        b.record.set("tools", obj(versions));
+        if let Some(file) = o.get(OptionKey::Budgets) {
+            b.record
+                .set("budget_input", artifact(&absolute(file)?, None)?);
+        }
+        if let Some(file) = o.get(OptionKey::ArgvReplies) {
+            b.record
+                .set("argv_replies", artifact(&absolute(file)?, None)?);
+        }
+        if let Some(file) = o.get(OptionKey::Disk) {
+            b.record.set("disk", artifact(&absolute(file)?, None)?);
+        }
+        if let Some(file) = o.get(OptionKey::Snapshot) {
+            b.record.set("snapshot", artifact(&absolute(file)?, None)?);
+        }
+        Ok(Self {
+            m,
+            runtime,
+            arith,
+            plugin,
+        })
     }
-    identity(b, &plugin, m, o.dialect())?;
-    // Identity was obtained from the exported ABI, not a string search in the .so.
-    let mut p = artifact(&plugin, None)?;
-    p.set(
-        "identity",
-        format!("dialect-{};isa-{ISA}", o.dialect()).into(),
-    );
-    b.record.set("plugin", p);
-    let mut versions = vec![];
-    for name in ["clang", "llvm-link", "opt"] {
-        let v = b.run(
-            &format!("version-{name}"),
-            vec![tool(m, name), "--version".into()],
+    fn link(
+        &self,
+        o: &Options,
+        b: &mut Build,
+        inputs: AdmittedInputs,
+        process_entry: bool,
+    ) -> Result<LinkedProgram> {
+        let Self {
+            m, runtime, arith, ..
+        } = self;
+        let m = *m;
+        let AdmittedInputs { modules, input_ir } = inputs;
+        let arith = arith::prepare(o, b, m, arith, &input_ir)?;
+        let linked = b.out.join("linked.bc");
+        let mut link = vec![tool(m, "llvm-link")];
+        link.extend(modules);
+        if !process_entry {
+            link.extend([
+                runtime.display().to_string(),
+                arith.display().to_string(),
+                "--only-needed".into(),
+            ]);
+        }
+        link.extend(["-o".into(), linked.display().to_string()]);
+        b.run(
+            if process_entry {
+                "process-input-link"
+            } else {
+                "runtime-link"
+            },
+            link,
             None,
         )?;
-        if !v.contains(&format!("version {m}.")) && !v.contains(&format!("LLD {m}.")) {
-            return Err(format!("BD-E-VERSION: {name} is not LLVM {m}: {v}"));
+        let instances = b.out.join("arith-instances/bennett-arith.bc");
+        if instances.is_file() {
+            b.run(
+                "arith-instance-roots",
+                vec![
+                    tool(m, "llvm-link"),
+                    linked.display().to_string(),
+                    format!("--override={}", instances.display()),
+                    "-o".into(),
+                    linked.display().to_string(),
+                ],
+                None,
+            )?;
         }
-        versions.push((name, v.into()));
+        if process_entry {
+            process::prepare(o, b, m, &linked, runtime, &arith)?;
+        } else {
+            close_libraries(
+                b,
+                m,
+                "production-library-closure",
+                &linked,
+                &[runtime, &arith],
+            )?;
+        }
+        let mut prepared_path = b.out.join("process-prepared.bc");
+        if o.get(OptionKey::Vscale).is_some() {
+            let modules = mode_preparation::prepare(
+                o,
+                b,
+                m,
+                &[linked.display().to_string()],
+                mode_preparation::Phase::Linked,
+            )?;
+            prepared_path = PathBuf::from(&modules[0]);
+            fs::copy(&prepared_path, &linked).map_err(|e| format!("mode prepared module: {e}"))?;
+        }
+        Ok(LinkedProgram {
+            arith,
+            linked,
+            prepared_path,
+        })
     }
-    b.record.set("tools", obj(versions));
-    if let Some(file) = o.get("bennett-budgets") {
-        b.record
-            .set("budget_input", artifact(&absolute(file)?, None)?);
+    fn lower(&self, o: &Options, b: &mut Build, program: LinkedProgram) -> Result<()> {
+        let m = self.m;
+        let plugin = &self.plugin;
+        let pipeline = &o.pipeline;
+        let LinkedProgram { arith, linked, .. } = program;
+        let post = b.out.join("postlink.bc");
+        b.run(
+            "postlink",
+            vec![
+                tool(m, "opt"),
+                format!("-passes={pipeline}"),
+                linked.display().to_string(),
+                "-o".into(),
+                post.display().to_string(),
+            ],
+            None,
+        )?;
+        let mut pass = vec![
+            tool(m, "opt"),
+            format!("-load-pass-plugin={}", plugin.display()),
+            "-passes=bennett".into(),
+            format!("-bennett-dialect={}", o.dialect()),
+            format!("-bennett-isa={ISA}"),
+            format!("-bennett-out={}", b.out.display()),
+        ];
+        pass.extend(o.plugin_args.clone());
+        pass.retain(|arg| {
+            !["-bennett-class=", "-bennett-vscale=", "-bennett-snapshot="]
+                .iter()
+                .any(|prefix| arg.starts_with(prefix))
+        });
+        pass.extend(["-disable-output".into(), post.display().to_string()]);
+        let blocked = match b.run("plugin", pass, Some(&arith)) {
+            Ok(_) => None,
+            Err(e) if e.contains("Unknown command line argument") => {
+                return Err(format!(
+                    "BD-B-MODE-BACKEND: published dialect §19/20 control has no registered backend; selected plugin and complete argv are recorded, no unchanged build is certified. Required control implementation or published driver/backend handoff: {e}"
+                ));
+            }
+            Err(e) if e.contains("BD-B-") => Some(e),
+            Err(e) => return Err(e),
+        };
+        for name in ["device.bc", "host.bc", "launches.json"] {
+            if !b.out.join(name).is_file() {
+                return Err(format!(
+                    "plugin returned success without §19.9 output {name}"
+                ));
+            }
+        }
+        for name in ["device.bc", "host.bc"] {
+            b.run(
+                "output-verify",
+                vec![
+                    tool(m, "opt"),
+                    "-passes=verify".into(),
+                    "-disable-output".into(),
+                    b.out.join(name).display().to_string(),
+                ],
+                None,
+            )?;
+        }
+        b.record.set(
+            "outputs",
+            obj([
+                ("linked", artifact(&linked, None)?),
+                ("postlink", artifact(&post, None)?),
+                ("device", artifact(&b.out.join("device.bc"), None)?),
+                ("host", artifact(&b.out.join("host.bc"), None)?),
+            ]),
+        );
+        if let Some(ref e) = blocked {
+            b.record.set("error", e.clone().into());
+        }
+        b.save(if blocked.is_some() {
+            "blocked"
+        } else {
+            "complete"
+        })?;
+        finalise_build(b)?;
+        if let Some(e) = blocked {
+            return Err(e);
+        }
+        Ok(())
     }
-    if let Some(file) = o.get("bennett-argv-replies") {
-        b.record
-            .set("argv_replies", artifact(&absolute(file)?, None)?);
-    }
-    if let Some(file) = o.get("bennett-disk") {
-        b.record.set("disk", artifact(&absolute(file)?, None)?);
-    }
-    if let Some(file) = o.get("bennett-snapshot") {
-        b.record.set("snapshot", artifact(&absolute(file)?, None)?);
-    }
+}
+fn admit_inputs(o: &Options, b: &mut Build, m: u32) -> Result<AdmittedInputs> {
     let mut inputs = vec![];
     let mut modules = vec![];
     let mut input_ir = vec![];
@@ -667,7 +618,7 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
             )
         })?;
         let text = read(&ir)?;
-        admit_dialect_flag(&text, o.get("bennett-dialect").unwrap())?;
+        admit_dialect_flag(&text, o.get(OptionKey::Dialect).unwrap())?;
         input_ir.push(ir.clone());
         for (key, previous) in [
             ("target datalayout", &mut layout),
@@ -698,9 +649,15 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
         modules.push(verified.display().to_string());
     }
     b.record.set("inputs", Json::Array(inputs));
-    let pipeline = o.get("bennett-pipeline").unwrap_or("lto<O3>");
+    Ok(AdmittedInputs { modules, input_ir })
+}
+fn execute(o: &Options, b: &mut Build) -> Result<()> {
+    let environment = Environment::inspect(o, b)?;
+    let m = environment.m;
+    let AdmittedInputs { modules, input_ir } = admit_inputs(o, b, m)?;
+    let pipeline = o.pipeline.as_str();
     b.record.set("pipeline", pipeline.into());
-    let process_entry = o.get("bennett-tier") == Some("reversible");
+    let process_entry = o.tier == Some(Tier::Reversible);
     // Marker calls and reserved runtime names are the dialect's entry to the
     // device pipeline. Inspect source modules before adding device libraries;
     // ordinary host libc must never become a selected device closure.
@@ -719,174 +676,46 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
     }
     let modules = mode_preparation::prepare(o, b, m, &modules, mode_preparation::Phase::Source)?;
     let device_mode = process_entry
-        || ["bennett-oracle", "bennett-platform"]
+        || [OptionKey::Oracle, OptionKey::Platform]
             .iter()
-            .any(|key| o.get(key).is_some());
+            .any(|key| o.get(*key).is_some());
     if !device_mode && !reserved_symbols {
-        if o.get("bennett-comparison") == Some("true") {
+        if o.comparison {
             return Err("BD-E-NATIVE-COMPARISON: no selected device entry; strict device comparison requires a materialised device module".into());
         }
-        b.record.set("unused_device_options", strings(&o.plugin_args));
+        b.record
+            .set("unused_device_options", strings(&o.plugin_args));
         native_host::build(o, b, m, &modules, pipeline)?;
         return finalise_build(b);
     }
     // Oracle synthesis must preserve an internal program root before LTO and
     // establish the callable register ownership; a late flag cannot restore it.
-    let preparation = ["bennett-oracle"]
+    let preparation = [OptionKey::Oracle]
         .into_iter()
-        .filter(|key| o.get(key).is_some())
+        .filter(|key| o.get(*key).is_some())
         .collect::<Vec<_>>();
     if !preparation.is_empty() {
         return Err(format!(
             "BD-B-MODE-BACKEND: {} requires a published descriptor/root, initializer or vscale preparation handoff before post-link optimisation; requested options and input hashes are retained, no unchanged build is certified",
-            preparation.join(", ")
+            preparation
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
     }
-    let arith = arith::prepare(o, b, m, &arith, &input_ir)?;
-    let linked = b.out.join("linked.bc");
-    let post = b.out.join("postlink.bc");
-    let mut link = vec![tool(m, "llvm-link")];
-    link.extend(modules);
-    if !process_entry {
-        link.extend([
-            runtime.display().to_string(),
-            arith.display().to_string(),
-            "--only-needed".into(),
-        ]);
-    }
-    link.extend(["-o".into(), linked.display().to_string()]);
-    b.run(
-        if process_entry {
-            "process-input-link"
-        } else {
-            "runtime-link"
-        },
-        link,
-        None,
-    )?;
-    let instances = b.out.join("arith-instances/bennett-arith.bc");
-    if instances.is_file() {
-        b.run(
-            "arith-instance-roots",
-            vec![
-                tool(m, "llvm-link"),
-                linked.display().to_string(),
-                format!("--override={}", instances.display()),
-                "-o".into(),
-                linked.display().to_string(),
-            ],
-            None,
-        )?;
-    }
-    if process_entry {
-        process::prepare(o, b, m, &linked, &runtime, &arith)?;
-    } else {
-        close_libraries(
-            b,
-            m,
-            "production-library-closure",
-            &linked,
-            &[&runtime, &arith],
-        )?;
-    }
-    let mut prepared_path = b.out.join("process-prepared.bc");
-    if o.get("bennett-vscale").is_some() {
-        let modules = mode_preparation::prepare(
-            o,
-            b,
-            m,
-            &[linked.display().to_string()],
-            mode_preparation::Phase::Linked,
-        )?;
-        prepared_path = PathBuf::from(&modules[0]);
-        fs::copy(&prepared_path, &linked).map_err(|e| format!("mode prepared module: {e}"))?;
-    }
-    if o.get("bennett-emit") == Some("process-bitcode") {
+    let program = environment.link(o, b, AdmittedInputs { modules, input_ir }, process_entry)?;
+    let prepared_path = &program.prepared_path;
+    if o.emission == Emission::ProcessBitcode {
         b.record
             .set("completion", "process-bitcode preparation stage".into());
         b.record.set(
             "outputs",
-            obj([("process_prepared", artifact(&prepared_path, None)?)]),
+            obj([("process_prepared", artifact(prepared_path, None)?)]),
         );
         return b.save("prepared");
     }
-    b.run(
-        "postlink",
-        vec![
-            tool(m, "opt"),
-            format!("-passes={pipeline}"),
-            linked.display().to_string(),
-            "-o".into(),
-            post.display().to_string(),
-        ],
-        None,
-    )?;
-    let mut pass = vec![
-        tool(m, "opt"),
-        format!("-load-pass-plugin={}", plugin.display()),
-        "-passes=bennett".into(),
-        format!("-bennett-dialect={}", o.dialect()),
-        format!("-bennett-isa={ISA}"),
-        format!("-bennett-out={}", b.out.display()),
-    ];
-    pass.extend(o.plugin_args.clone());
-    pass.retain(|arg| {
-        !["-bennett-class=", "-bennett-vscale=", "-bennett-snapshot="]
-            .iter()
-            .any(|prefix| arg.starts_with(prefix))
-    });
-    pass.extend(["-disable-output".into(), post.display().to_string()]);
-    let blocked = match b.run("plugin", pass, Some(&arith)) {
-        Ok(_) => None,
-        Err(e) if e.contains("Unknown command line argument") => {
-            return Err(format!(
-                "BD-B-MODE-BACKEND: published dialect §19/20 control has no registered backend; selected plugin and complete argv are recorded, no unchanged build is certified. Required control implementation or published driver/backend handoff: {e}"
-            ));
-        }
-        Err(e) if e.contains("BD-B-") => Some(e),
-        Err(e) => return Err(e),
-    };
-    for name in ["device.bc", "host.bc", "launches.json"] {
-        if !b.out.join(name).is_file() {
-            return Err(format!(
-                "plugin returned success without §19.9 output {name}"
-            ));
-        }
-    }
-    for name in ["device.bc", "host.bc"] {
-        b.run(
-            "output-verify",
-            vec![
-                tool(m, "opt"),
-                "-passes=verify".into(),
-                "-disable-output".into(),
-                b.out.join(name).display().to_string(),
-            ],
-            None,
-        )?;
-    }
-    b.record.set(
-        "outputs",
-        obj([
-            ("linked", artifact(&linked, None)?),
-            ("postlink", artifact(&post, None)?),
-            ("device", artifact(&b.out.join("device.bc"), None)?),
-            ("host", artifact(&b.out.join("host.bc"), None)?),
-        ]),
-    );
-    if let Some(ref e) = blocked {
-        b.record.set("error", e.clone().into());
-    }
-    b.save(if blocked.is_some() {
-        "blocked"
-    } else {
-        "complete"
-    })?;
-    finalise_build(b)?;
-    if let Some(e) = blocked {
-        return Err(e);
-    }
-    Ok(())
+    environment.lower(o, b, program)
 }
 fn finalise_build(b: &Build) -> Result<()> {
     let mut c = Command::new("python3");
@@ -917,7 +746,7 @@ fn main() {
     let result = (|| -> Result<()> {
         let o = Options::parse(&args)?;
         fs::create_dir_all(task_tmpdir()?).map_err(|e| format!("BD-E-CONFIG: TMPDIR: {e}"))?;
-        let out = absolute(o.get("bennett-out").unwrap())?;
+        let out = absolute(o.get(OptionKey::Out).unwrap())?;
         if out.exists()
             && fs::read_dir(&out)
                 .map_err(|e| e.to_string())?
@@ -938,15 +767,15 @@ fn main() {
                 ("driver_version", env!("CARGO_PKG_VERSION").into()),
                 ("dialect", o.dialect().into()),
                 ("isa", ISA.into()),
-                ("llvm_major", o.major()?.into()),
+                ("llvm_major", o.major.into()),
                 ("options", strings(&args)),
             ]),
         };
-        let r = if o.get("bennett-materialised").is_some() {
+        let r = if o.get(OptionKey::Materialised).is_some() {
             native::compare(&o, &mut b)
         } else {
             execute(&o, &mut b).and_then(|()| {
-                if o.get("bennett-comparison") == Some("true") {
+                if o.comparison {
                     native::compare(&o, &mut b)
                 } else {
                     Ok(())
@@ -1007,10 +836,166 @@ fn main() {
     }
 }
 #[cfg(test)]
+mod test_support {
+    use super::*;
+
+    pub struct Fixture {
+        pub root: PathBuf,
+        pub options: Options,
+        pub build: Build,
+    }
+    impl Fixture {
+        pub fn new(name: &str) -> Self {
+            let root = task_tmpdir()
+                .unwrap()
+                .join(format!("stage-{name}-{}", std::process::id()));
+            fs::create_dir(&root).unwrap();
+            let out = root.join("out");
+            fs::create_dir(&out).unwrap();
+            fs::create_dir(root.join("include")).unwrap();
+            let source = root.join("source.ll");
+            let c_source = root.join("source.c");
+            write(&c_source, "int main(void) { return 17; }\n").unwrap();
+            let result = Command::new(tool(23, "clang"))
+                .args(["-S", "-emit-llvm"])
+                .arg(&c_source)
+                .arg("-o")
+                .arg(&source)
+                .output()
+                .unwrap();
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+            let args = vec![
+                "--bennett-dialect=0.2.13".into(),
+                format!("--bennett-out={}", out.display()),
+                source.display().to_string(),
+            ];
+            let mut options = Options::parse(&args).unwrap();
+            for key in [
+                OptionKey::Runtimes,
+                OptionKey::Arith,
+                OptionKey::Plugin,
+                OptionKey::NativeCheck,
+                OptionKey::NativeSupport,
+            ] {
+                let path = root.join(key.as_str());
+                write(&path, "define void @unused() { ret void }\n").unwrap();
+                options.paths.insert(key, path);
+            }
+            options.sysroot = Some(Sysroot::new(root.clone()).unwrap());
+            let build = Build {
+                out,
+                record: obj([] as [(&str, Json); 0]),
+                commands: vec![],
+            };
+            Self {
+                root,
+                options,
+                build,
+            }
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            fs::remove_dir_all(&self.root).unwrap();
+        }
+    }
+}
+#[cfg(test)]
 mod tests {
     use super::*;
     fn parse(a: &[&str]) -> Result<Options> {
         Options::parse(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+    }
+    #[test]
+    fn environment_stage_rejects_a_wrong_library_digest_before_tools() {
+        let mut fixture = test_support::Fixture::new("environment");
+        fixture
+            .options
+            .values
+            .insert(OptionKey::RuntimesSha256, "0".repeat(64));
+        let result = Environment::inspect(&fixture.options, &mut fixture.build);
+        assert!(matches!(result, Err(error) if error.contains("BD-E-VERSION: SHA-256 mismatch")));
+        assert!(fixture.build.commands.is_empty());
+    }
+    #[test]
+    fn admission_stage_verifies_the_original_target_and_exports() {
+        let mut fixture = test_support::Fixture::new("admission");
+        let input = admit_inputs(&fixture.options, &mut fixture.build, 23).unwrap();
+        assert_eq!(input.modules.len(), 1);
+        let symbols = fixture
+            .build
+            .run(
+                "test-symbols",
+                vec![
+                    tool(23, "llvm-nm"),
+                    "--defined-only".into(),
+                    input.modules[0].clone(),
+                ],
+                None,
+            )
+            .unwrap();
+        assert!(symbols.split_whitespace().any(|symbol| symbol == "main"));
+        let source = &fixture.options.inputs[0];
+        write(source, "define i32 @main() { ret i32 17 }\n").unwrap();
+        assert!(
+            matches!(admit_inputs(&fixture.options, &mut fixture.build, 23), Err(error) if error.contains("missing target triple"))
+        );
+    }
+    #[test]
+    fn production_link_stage_preserves_the_admitted_program() {
+        let mut fixture = test_support::Fixture::new("production-link");
+        let input = admit_inputs(&fixture.options, &mut fixture.build, 23).unwrap();
+        let environment = Environment {
+            m: 23,
+            runtime: configured_path(&fixture.options, OptionKey::Runtimes).unwrap(),
+            arith: configured_path(&fixture.options, OptionKey::Arith).unwrap(),
+            plugin: configured_path(&fixture.options, OptionKey::Plugin).unwrap(),
+        };
+        let linked = environment
+            .link(&fixture.options, &mut fixture.build, input, false)
+            .unwrap();
+        let observed = Command::new(tool(23, "lli"))
+            .arg(linked.linked)
+            .output()
+            .unwrap();
+        assert_eq!(observed.status.code(), Some(17));
+        assert!(observed.stderr.is_empty());
+    }
+    #[test]
+    fn lowering_stage_fails_before_plugin_when_postlink_input_is_invalid() {
+        let mut fixture = test_support::Fixture::new("lowering");
+        let invalid = fixture.root.join("invalid.bc");
+        write(&invalid, "not LLVM bitcode").unwrap();
+        let environment = Environment {
+            m: 23,
+            runtime: PathBuf::new(),
+            arith: PathBuf::new(),
+            plugin: PathBuf::new(),
+        };
+        let program = LinkedProgram {
+            arith: PathBuf::new(),
+            linked: invalid,
+            prepared_path: PathBuf::new(),
+        };
+        let result = environment.lower(&fixture.options, &mut fixture.build, program);
+        assert!(matches!(result, Err(error) if error.starts_with("postlink:")));
+        assert_eq!(fixture.build.commands.len(), 1);
+        assert!(!fixture.build.out.join("build.json").exists());
+    }
+    #[test]
+    fn typed_controls_have_one_default_owner() {
+        let options =
+            parse(&["--bennett-dialect=0.2.13", "--bennett-out=out", "input.ll"]).unwrap();
+        assert_eq!(options.major, 23);
+        assert!(!options.comparison);
+        assert_eq!(options.tier, None);
+        assert_eq!(options.emission, Emission::Artifact);
+        assert_eq!(options.pipeline, "lto<O3>");
+        assert_eq!(options.data_base, "4096");
     }
     #[test]
     fn unknown_and_duplicate_options_fail() {
@@ -1045,8 +1030,7 @@ mod tests {
         assert_eq!(
             parse(&["-bennett-dialect=0.2.10", "-bennett-out=o", "x.bc"])
                 .unwrap()
-                .major()
-                .unwrap(),
+                .major,
             23
         );
     }
@@ -1062,7 +1046,7 @@ mod tests {
         let mut args = base.to_vec();
         args.extend(["--bennett-tier=reversible", "--bennett-entry=main"]);
         assert_eq!(
-            parse(&args).unwrap().get("bennett-emit"),
+            parse(&args).unwrap().get(OptionKey::Emit),
             Some("process-bitcode")
         );
         args.push("--bennett-comparison=true");

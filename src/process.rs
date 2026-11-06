@@ -9,11 +9,11 @@ pub fn prepare(
     runtime: &Path,
     arith: &Path,
 ) -> Result<()> {
-    if o.get("bennett-tier") != Some("reversible") {
+    if o.get(OptionKey::Tier) != Some("reversible") {
         return Ok(());
     }
     let entry = o
-        .get("bennett-entry")
+        .get(OptionKey::Entry)
         .ok_or("BD-E-PROCESS: missing entry")?;
     let executable =
         llvm_utility::compile(b, major, "process-entry", include_str!("process-entry.cpp"))?;

@@ -2,17 +2,17 @@
 use super::*;
 
 pub fn build(o: &Options, b: &mut Build, major: u32, arith: &Path) -> Result<()> {
-    let runtime = configured_path(o, "bennett-runtimes")?;
+    let runtime = configured_path(o, OptionKey::Runtimes)?;
     let publication = runtime
         .parent()
         .ok_or("BD-E-CONFIG: runtime has no publication directory")?;
     let sysroot = o.required_sysroot()?;
-    let mut sources = match o.get("bennett-classifier-input") {
+    let mut sources = match o.get(OptionKey::ClassifierInput) {
         Some(p) => vec![absolute(p)?],
         None => vec![],
     };
     if !sources.is_empty()
-        && let Some(p) = o.get("bennett-native-input")
+        && let Some(p) = o.get(OptionKey::NativeInput)
     {
         sources.push(absolute(p)?);
     }
@@ -88,7 +88,7 @@ pub fn build(o: &Options, b: &mut Build, major: u32, arith: &Path) -> Result<()>
             .trim()
             .parse::<u64>()
             .map_err(|e| format!("classifier heap budget: {e}"))?;
-        let data = o.get("bennett-layout-data-base").unwrap_or("4096");
+        let data = o.data_base.as_str();
         write(
             &layout_ir,
             format!(
@@ -203,7 +203,7 @@ pub fn build(o: &Options, b: &mut Build, major: u32, arith: &Path) -> Result<()>
     b.record.set("source_classifiers", rows);
     // An adapter without original inputs is still useful as link evidence.
     // An explicitly requested classifier must fail loudly if it cannot build.
-    if o.get("bennett-classifier-input").is_some() {
+    if o.get(OptionKey::ClassifierInput).is_some() {
         result.map_err(|e| format!("BD-E-NATIVE-CLASSIFIER: {e}"))?;
     }
     Ok(())
