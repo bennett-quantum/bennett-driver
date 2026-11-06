@@ -9,7 +9,7 @@ pub fn prepare(
     runtime: &Path,
     arith: &Path,
 ) -> Result<()> {
-    if o.get(OptionKey::Tier) != Some("reversible") {
+    if o.tier != Some(Tier::Reversible) {
         return Ok(());
     }
     let entry = o

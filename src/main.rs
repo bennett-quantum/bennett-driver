@@ -455,12 +455,17 @@ impl Environment {
             format!("-bennett-isa={ISA}"),
             format!("-bennett-out={}", b.out.display()),
         ];
-        pass.extend(o.plugin_args.clone());
-        pass.retain(|arg| {
-            !["-bennett-class=", "-bennett-vscale=", "-bennett-snapshot="]
+        pass.extend(
+            o.plugin_args
                 .iter()
-                .any(|prefix| arg.starts_with(prefix))
-        });
+                .filter(|arg| {
+                    !matches!(
+                        arg.key,
+                        OptionKey::Class | OptionKey::Vscale | OptionKey::Snapshot
+                    )
+                })
+                .map(ToString::to_string),
+        );
         pass.extend(["-disable-output".into(), post.display().to_string()]);
         let blocked = match b.run("plugin", pass, Some(&arith)) {
             Ok(_) => None,
@@ -683,8 +688,15 @@ fn execute(o: &Options, b: &mut Build) -> Result<()> {
         if o.comparison {
             return Err("BD-E-NATIVE-COMPARISON: no selected device entry; strict device comparison requires a materialised device module".into());
         }
-        b.record
-            .set("unused_device_options", strings(&o.plugin_args));
+        b.record.set(
+            "unused_device_options",
+            strings(
+                &o.plugin_args
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>(),
+            ),
+        );
         native_host::build(o, b, m, &modules, pipeline)?;
         return finalise_build(b);
     }
@@ -992,6 +1004,25 @@ mod tests {
         assert!(!fixture.build.out.join("build.json").exists());
     }
     #[test]
+    fn repeated_backend_controls_keep_their_parsed_keys_and_order() {
+        let options = parse(&[
+            "--bennett-dialect=0.2.13",
+            "--bennett-out=out",
+            "--bennett-class=alpha",
+            "--bennett-bind=x=y",
+            "--bennett-class=beta",
+            "input.ll",
+        ])
+        .unwrap();
+        use OptionKey::{Bind, Class};
+        let received = options
+            .plugin_args
+            .iter()
+            .map(|arg| (arg.key, arg.value.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(received, [(Class, "alpha"), (Bind, "x=y"), (Class, "beta")]);
+    }
+    #[test]
     fn typed_controls_have_one_default_owner() {
         let options =
             parse(&["--bennett-dialect=0.2.13", "--bennett-out=out", "input.ll"]).unwrap();
@@ -1025,9 +1056,11 @@ mod tests {
             "x.bc",
         ])
         .unwrap();
-        assert!(
-            o.plugin_args
-                .contains(&"-bennett-analysis-budget-ms=300000".to_string())
+        assert_eq!(o.plugin_args[0].key, OptionKey::AnalysisBudgetMs);
+        assert_eq!(o.plugin_args[0].value, "300000");
+        assert_eq!(
+            o.plugin_args[0].to_string(),
+            "-bennett-analysis-budget-ms=300000"
         );
     }
     #[test]

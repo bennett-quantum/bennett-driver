@@ -92,6 +92,12 @@ fixture bodies may not. These definitions and hand-derived control-depth cases
 are covered by eight ratchet mutation tests. No numerical target or coverage
 threshold is imposed.
 
+The anti-slop pass keeps backend arguments as parsed `(OptionKey, value)` pairs
+through preparation/filtering/forwarding; no rendered argument is reparsed to
+recover classes or dispatch backend controls. Repeated controls preserve input
+order, covered directly in the 18-test unit suite. This follow-up passes the
+existing structural baseline without relaxing it.
+
 <!-- quality-baseline -->
 ```json
 {

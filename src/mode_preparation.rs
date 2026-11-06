@@ -16,8 +16,8 @@ pub fn prepare(
     let classes = o
         .plugin_args
         .iter()
-        .filter_map(|arg| arg.strip_prefix("-bennett-class="))
-        .map(str::to_string)
+        .filter(|arg| arg.key == OptionKey::Class)
+        .map(|arg| arg.value.clone())
         .collect::<Vec<_>>();
     if classes.is_empty()
         && o.get(OptionKey::Snapshot).is_none()

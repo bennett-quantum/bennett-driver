@@ -86,12 +86,26 @@ pub(super) enum Emission {
     ProcessBitcode,
 }
 #[derive(Debug)]
+pub(super) struct PluginArgument {
+    pub(super) key: OptionKey,
+    pub(super) value: String,
+}
+impl std::fmt::Display for PluginArgument {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let prefix = match self.key {
+            OptionKey::Tier | OptionKey::Entry | OptionKey::Disk => "--",
+            _ => "-",
+        };
+        write!(f, "{prefix}{}={}", self.key, self.value)
+    }
+}
+#[derive(Debug)]
 pub(super) struct Options {
     pub(super) values: BTreeMap<OptionKey, String>,
     pub(super) paths: BTreeMap<OptionKey, PathBuf>,
     pub(super) sysroot: Option<Sysroot>,
     pub(super) inputs: Vec<PathBuf>,
-    pub(super) plugin_args: Vec<String>,
+    pub(super) plugin_args: Vec<PluginArgument>,
     pub(super) major: u32,
     pub(super) comparison: bool,
     pub(super) tier: Option<Tier>,
@@ -168,15 +182,10 @@ impl Options {
                 }
                 o.values.entry(key).or_insert_with(|| value.into());
                 if pass {
-                    o.plugin_args.push(format!(
-                        "{}{}={value}",
-                        if matches!(key, OptionKey::Tier | OptionKey::Entry | OptionKey::Disk) {
-                            "--"
-                        } else {
-                            "-"
-                        },
-                        key
-                    ));
+                    o.plugin_args.push(PluginArgument {
+                        key,
+                        value: value.into(),
+                    });
                 }
             } else {
                 o.inputs.push(PathBuf::from(arg));
