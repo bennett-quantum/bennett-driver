@@ -92,9 +92,9 @@ def measure():
             continue
         if name != 'Cargo.lock' and ('__pycache__' in path.parts or any(fnmatch.fnmatch(name, glob) for glob in LITTER)):
             metrics['litter'].append(name)
-        if path.parts[len(ROOT.parts)] not in ('src', 'scripts', 'tests') or path.suffix not in ('.rs', '.cpp', '.c', '.h', '.py', '.sh'):
+        if path.parts[len(ROOT.parts)] not in ('src', 'scripts', 'tests'):
             continue
-        source = path.read_text()
+        source = path.read_bytes().decode('utf-8', errors='replace')
         for number, line in enumerate(source.splitlines(), 1):
             # Test names and named promised switches are explicitly allowed.
             if re.match(r'\s*(?:fn |def test_|#\[ignore)', line):

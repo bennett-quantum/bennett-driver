@@ -89,7 +89,7 @@ baseline change. Deleted files cannot offset increases elsewhere. `Cargo.lock` i
 required source metadata and is excluded from transient-lock litter. Source test
 names and named promised switches may carry bead names; emitted messages and
 fixture bodies may not. These definitions and hand-derived control-depth cases
-are covered by eight ratchet mutation tests. No numerical target or coverage
+are covered by nine ratchet mutation tests. No numerical target or coverage
 threshold is imposed.
 
 The anti-slop pass keeps backend arguments as parsed `(OptionKey, value)` pairs
@@ -97,6 +97,12 @@ through preparation/filtering/forwarding; no rendered argument is reparsed to
 recover classes or dispatch backend controls. Repeated controls preserve input
 order, covered directly in the 18-test unit suite. This follow-up passes the
 existing structural baseline without relaxing it.
+
+The hygiene grep covers all tracked content under `src/`, `scripts/` and `tests/`,
+including extensionless hook/tool scripts; a dedicated mutation test prevents that
+path from escaping the gate. Byte decoding for the grep preserves all ASCII
+identifiers even in non-UTF-8 fixtures; language metrics still parse only the
+listed source languages.
 
 <!-- quality-baseline -->
 ```json
@@ -168,7 +174,7 @@ existing structural baseline without relaxing it.
       "wrappers": 0
     },
     "scripts/quality.py": {
-      "complexity": 80,
+      "complexity": 79,
       "functions": 6,
       "length_tails": [
         2,
@@ -234,7 +240,7 @@ existing structural baseline without relaxing it.
     },
     "src/main.rs": {
       "complexity": 199,
-      "functions": 37,
+      "functions": 38,
       "length_tails": [
         10,
         7,
@@ -311,8 +317,8 @@ existing structural baseline without relaxing it.
       "wrappers": 0
     },
     "src/options.rs": {
-      "complexity": 81,
-      "functions": 7,
+      "complexity": 76,
+      "functions": 8,
       "length_tails": [
         1,
         1,
@@ -320,7 +326,7 @@ existing structural baseline without relaxing it.
         0,
         0
       ],
-      "max_length": 191,
+      "max_length": 186,
       "wrappers": 4
     },
     "src/output_paths.rs": {
@@ -819,7 +825,7 @@ existing structural baseline without relaxing it.
     },
     "tests/quality.py": {
       "complexity": 2,
-      "functions": 10,
+      "functions": 11,
       "length_tails": [
         0,
         0,

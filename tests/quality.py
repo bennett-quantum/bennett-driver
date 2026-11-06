@@ -79,6 +79,14 @@ class QualityRatchet(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('process_identifiers', result.stderr)
 
+    def test_extensionless_script_identifiers_are_checked(self):
+        path = self.root/'scripts/tool'
+        path.write_text('# '+ 'bennett-'+'driver-abc'+'\n')
+        subprocess.run(['git', '-C', self.root, 'add', '--', 'scripts/tool'], check=True)
+        result = self.run_check()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('process_identifiers', result.stderr)
+
     def test_new_file_cannot_hide_existing_complexity(self):
         path = self.root/'src/hidden.rs'
         path.write_text('fn hidden() { if ready() { perform(); } }\n')
