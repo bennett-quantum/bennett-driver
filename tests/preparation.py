@@ -15,6 +15,7 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='preparation-') as temp:
         base=[sys.argv[1],*flags(m,plugin=False),f'--bennett-plugin={plugin}',
               '--bennett-plugin-sha256='+hashlib.sha256(plugin.read_bytes()).hexdigest(),
               '--bennett-dialect=0.2.13',f'--bennett-llvm-major={m}']
+        os.environ.pop('BENNETT_DRIVER_SYSROOT', None)  # Snapshot probes use ordinary host startup.
         source=d/f'native-{m}.ll'
         original=target_headers(m)+'''@g = global i8 0, align 1
 define i32 @main() { %v=load i8,ptr @g

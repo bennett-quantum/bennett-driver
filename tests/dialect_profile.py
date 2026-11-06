@@ -9,6 +9,7 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='dialect-profile-') as 
     d = pathlib.Path(temp)
     for major in (18, 23):
         configure(major)
+        os.environ.pop('BENNETT_DRIVER_SYSROOT', None)  # This fixture retains ordinary host linking.
         plugin = plugin_root/f'build/libbennett-plugin-{major}.so'
         libraries = [f'--bennett-plugin={plugin}', f'--bennett-plugin-sha256={sha(plugin)}']
         for lib in ('runtimes', 'arith'):

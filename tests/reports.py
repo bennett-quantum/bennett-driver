@@ -57,6 +57,8 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='reports-') as temp:
             inputs=[str(src)]
         keys={a.split('=',1)[0] for a in extra}
         extra += [a for a in flags(18 if label=='newer' else 23, plugin=label!='identity') if a.split('=',1)[0] not in keys]
+        if label=='native-host-link':
+            os.environ.pop('BENNETT_DRIVER_SYSROOT', None)
         p=subprocess.run([sys.argv[1],*(['-bennett-dialect=0.2.10'] if label!='version' else []),f'-bennett-out={out}',*extra,*inputs],capture_output=True)
         assert p.returncode!=0
         path=out/'blockers.json'
@@ -71,5 +73,6 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='reports-') as temp:
             assert 'strict comparison' not in r[0]['constraint'] and '§17.7/19.5' not in r[0]['constraint'],r
         if label=='native-host-link':
             assert r[0]['code']=='DRIVER-NATIVE-HOST',r
+            assert 'missing_native_symbol' in r[0]['diagnostic'],r
         assert (out/'blockers.txt').is_file()
         print(label,r[0]['code'])
