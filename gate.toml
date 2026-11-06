@@ -11,6 +11,10 @@ CARGO_TARGET_DIR = "{root}/.tmp/gate-target"
 name = "cargo test"
 argv = ["cargo", "test", "--offline", "-j3", "--", "--nocapture", "--test-threads=4"]
 
+[[check]]
+name = "slow arithmetic generators"
+argv = ["cargo", "test", "--offline", "-j3", "--test", "fixtures", "--", "--ignored", "--nocapture", "--test-threads=4"]
+
 [[report]]
 name = "promised configured classes (bennett-driver-9zg; expected red)"
 argv = ["cargo", "test", "--offline", "-j3", "--test", "classes", "--", "--ignored", "--nocapture", "--test-threads=4"]
