@@ -55,3 +55,10 @@ builds (82 each) were byte-identical. The independent merged-module fixture also
 passes after the refactor. Typed option keys and execution controls have one parser
 and one default owner; production environment/admission/link/lowering and comparison
 admission/check/layout-and-closure/codegen stages each have a direct unit test.
+
+The fail-fast sweep retained the earlier pin branch's explicit external-path and
+TMPDIR requirements (no compile-time or live-sibling defaults). It also reproduced
+and fixed a stale public receipt after a later device comparison failure:
+`timeout 120 cargo test --offline -j3 --test fixtures pipeline_metadata -- --nocapture --test-threads=4`
+went from red (`build.json complete`, manifest failed) to green on both majors.
+Existing receipts now refresh their failure status and certificate/build bindings.

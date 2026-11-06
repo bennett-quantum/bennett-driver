@@ -661,7 +661,7 @@ impl Comparison {
             return Err(format!(
                 "BD-E-NATIVE-MARKERS: §17.7 actual materialised device still calls {}; select the launch-record-verified marker-free comparison adapter; no fake definitions. {}",
                 residual.join(", "),
-                first_error.unwrap_or_default()
+                first_error.as_deref().unwrap_or("native link succeeded but materialised marker imports remain")
             ));
         }
         if let Some(e) = first_error {

@@ -789,6 +789,11 @@ fn main() {
             } else {
                 "failed"
             })?;
+            // A production build may have completed before a later comparison
+            // failed. Keep the hash-bound public receipt consistent with exit.
+            if b.out.join("build.json").is_file() {
+                finalise_build(&b)?;
+            }
             let stage = b
                 .commands
                 .last()

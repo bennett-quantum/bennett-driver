@@ -31,4 +31,16 @@ define i32 @top() {
    assert build['pipeline']==pipeline
    receipt=json.loads((out/'top/launch-record.json').read_text())
    assert receipt['artifacts']['top/certificate.json']['sha256']==hashlib.sha256((out/'top/certificate.json').read_bytes()).hexdigest()
+  failed=d/f'failed-comparison-{major}'
+  malformed=d/f'malformed-layout-{major}.json'
+  malformed.write_text('{}')
+  result=subprocess.run([sys.argv[1],*flags(major),f'--bennett-llvm-major={major}',
+      '-bennett-dialect=0.2.10',f'--bennett-out={failed}', '--bennett-comparison=true',
+      f'--bennett-comparison-layout={malformed}',source],capture_output=True,timeout=120)
+  assert result.returncode != 0, result.stderr
+  manifest=json.loads((failed/'manifest.json').read_text())
+  assert manifest['status'] == 'failed', manifest
+  build=json.loads((failed/'build.json').read_text())
+  assert build['status'] == manifest['status'], (build['status'], manifest['status'])
+  assert build['error'] == manifest['error']
  print('Both majors: single/double-dash and default pipelines agree across executed command/build/certificate/receipt')
