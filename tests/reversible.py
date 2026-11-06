@@ -51,7 +51,7 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='rung3-') as temp:
             assert 'N21/N27 vector intrinsic lane materialisation' in report[0]['diagnostic'],report
             assert 'llvm.fshl.v4i32' in report[0]['diagnostic'],report
             assert not (hello/'device.bc').exists()
-            print('LLVM18 real hello: production blocked on bp-ozp, no native input')
+            print('LLVM18 real hello: production blocked on vector intrinsic lowering, no native input')
         else:
             assert report[0]['code']=='BD-B-ISA7',report
             assert (hello/'device.bc').exists()
@@ -64,5 +64,5 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='rung3-') as temp:
             assert '__bennett_effect_console_write' in r[0]['diagnostic'],r
             variants=json.loads((native/'native-comparisons.json').read_text())
             assert variants[0]['residual_markers']==['__bennett_effect_console_write'],variants
-            assert variants[2]['blocked_on']==['brt-nuu.2'],variants
-            print('LLVM23 real hello: R BD-B-ISA7; native console marker bp-xyn')
+            assert variants[2]['blocked_on']==['freestanding-asan-runtime'],variants
+            print('LLVM23 real hello: R BD-B-ISA7; native console effect marker remains')

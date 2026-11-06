@@ -39,7 +39,7 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='classifier-') as temp:
         assert row['subject'] == 'original-input', row
         assert row['inputs'][0]['sha256'] == hashlib.sha256(source.read_bytes()).hexdigest()
         assert rows[1]['variant'] == 'O0-ASan-original-input'
-        assert rows[1]['blocked_on'] == ['brt-nuu.2']
+        assert rows[1]['blocked_on'] == ['freestanding-asan-runtime']
         binary = out/'classifier-ubsan-minimal'
         p = subprocess.run([binary], capture_output=True, timeout=10)
         assert p.returncode != 0 and b'ubsan: out-of-bounds' in p.stderr, p

@@ -62,3 +62,12 @@ and fixed a stale public receipt after a later device comparison failure:
 `timeout 120 cargo test --offline -j3 --test fixtures pipeline_metadata -- --nocapture --test-threads=4`
 went from red (`build.json complete`, manifest failed) to green on both majors.
 Existing receipts now refresh their failure status and certificate/build bindings.
+
+Hygiene verification: the tracked-source scan found the stale `docs/PROGRESS.md`
+and 15 process identifiers in product/test bodies before cleanup; afterwards both
+lists are empty. Named promised-test switches retain their bead names. Product
+refusals now name the missing mixed-container/host-entry contract or freestanding
+ASan capability directly. `SPEC_VERSIONS.toml` records the accepted 0.2.13 dialect,
+its pinned published specification, explicit historical 0.2.10 compatibility and
+unchanged ISA 0.8. README now describes explicit dependencies and the real test
+split. Native-host and pipeline negative fixtures pass after the diagnostic changes.

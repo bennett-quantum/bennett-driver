@@ -649,7 +649,7 @@ impl Comparison {
         ("function","<whole-program>".into()),("value_or_call","<instrumentation>".into()),
         ("constraint","§17.7 diagnostic instrumentation must not import hosted sanitizer/libc/libm".into()),
         ("required_change","Publish a real freestanding ASan closure or specified checked memory adapter".into()),
-        ("blocked_on",strings(&["brt-nuu.2".into()])),
+        ("blocked_on",strings(&["freestanding-asan-runtime".into()])),
         ("reason","Published UBSan-minimal source classifier is separate; general memory detection remains required".into())]));
         b.record
             .set("native_comparisons", Json::Array(results.clone()));
@@ -661,7 +661,9 @@ impl Comparison {
             return Err(format!(
                 "BD-E-NATIVE-MARKERS: §17.7 actual materialised device still calls {}; select the launch-record-verified marker-free comparison adapter; no fake definitions. {}",
                 residual.join(", "),
-                first_error.as_deref().unwrap_or("native link succeeded but materialised marker imports remain")
+                first_error
+                    .as_deref()
+                    .unwrap_or("native link succeeded but materialised marker imports remain")
             ));
         }
         if let Some(e) = first_error {

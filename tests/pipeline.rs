@@ -49,6 +49,9 @@ fn missing_published_fixture_names_its_dependency() {
     assert!(!result.status.success());
     let error = String::from_utf8_lossy(&result.stderr);
     assert!(error.contains("BD-E-TEST-FIXTURE"), "{error}");
-    assert!(error.contains("bennett-driver-ppz"), "{error}");
+    assert!(
+        error.contains("conformance must publish the tracked driver-regression fixture"),
+        "{error}"
+    );
     assert!(error.contains("no live sibling .tmp fallback"), "{error}");
 }

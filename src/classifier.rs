@@ -196,7 +196,7 @@ pub fn build(o: &Options, b: &mut Build, major: u32, arith: &Path) -> Result<()>
         ("variant", "O0-ASan-original-input".into()),
         ("subject", "original-input".into()),
         ("status", "blocked".into()),
-        ("blocked_on", strings(&["brt-nuu.2".into()])),
+        ("blocked_on", strings(&["freestanding-asan-runtime".into()])),
         ("reason", "Full freestanding ASan is not published; UBSan does not detect general memory faults or use after free".into()),
     ])]);
     write(b.out.join("native-classifiers.json"), rows.encode() + "\n")?;

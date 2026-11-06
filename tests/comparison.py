@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='comparison-') as tmp:
         run(args)
         records=json.loads((out/'native-comparisons.json').read_text())
         assert [r['status'] for r in records]==['linked','linked','blocked'],records
-        assert records[2]['blocked_on']==['brt-nuu.2']
+        assert records[2]['blocked_on']==['freestanding-asan-runtime']
         table=(out/'native-layout.ll').read_text()
         assert '@__bennett_rt_native_layout = constant { i64, i64, i64 } { i64 1, i64 69632, i64 1048576 }, align 8' in table
         for level in ('O0','O2'):

@@ -28,7 +28,7 @@ fixtures = sibling('bennett-conformance')/'ladder/rung-2/fixtures'
 report = evidence/'report.json'
 if not report.is_file():
     raise SystemExit(f'BD-E-TEST-FIXTURE: required published rung-2 fixture is missing: {report}; '
-        'bennett-driver-ppz requires conformance to publish the tracked driver-regression fixture '
+        'conformance must publish the tracked driver-regression fixture '
         'and the gate to pin that publication; no live sibling .tmp fallback is permitted')
 evidence_manifest = json.loads(report.read_text())['manifest']
 gate_config=tomllib.loads((ROOT/'gate.toml').read_text())
@@ -118,6 +118,6 @@ with tempfile.TemporaryDirectory(prefix='integration-',dir=ROOT/'.tmp') as job:
         assert '__bennett_rt_native_layout' in (out/'native-work/native-layout.ll').read_text()
         variants=json.loads((out/'native-work/native-comparisons.json').read_text())
         assert [v['variant'] for v in variants]==['O2','O0','O0-ASan']
-        assert variants[2]['blocked_on']==['brt-nuu.2']
-        print(f'LLVM {m}: driver native comparison blocked by residual qalloc/qfree (bp-xyn); recorded baselines agree', flush=True)
+        assert variants[2]['blocked_on']==['freestanding-asan-runtime']
+        print(f'LLVM {m}: driver native comparison blocked by residual qalloc/qfree; recorded baselines agree', flush=True)
         print(f'LLVM {m}: both launch hashes agree with {evidence}', flush=True)

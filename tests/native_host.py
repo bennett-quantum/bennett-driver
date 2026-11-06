@@ -103,7 +103,7 @@ define i32 @top() {
         mixedout = d/f'mixed-{major}'
         refused = run([*args[:-1], f'--bennett-out={mixedout}', marked, native])
         error = refused.stderr.decode()
-        assert refused.returncode != 0 and 'bennett-4ht' in error and 'bennett-driver-116' in error, error
+        assert refused.returncode != 0 and 'BD-B-NATIVE-INPUT' in error and 'published mixed-container and host-entry ABI' in error, error
         assert not (mixedout/'native-host').exists()
     assert original == {str(p): sha(p) for p in (main, helper)}
     print('Both majors: native-only stdio/argv/multi-TU process, library object, empty device inventory, explicit mixed-link dependency')

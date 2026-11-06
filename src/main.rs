@@ -547,7 +547,7 @@ fn admit_inputs(o: &Options, b: &mut Build, m: u32) -> Result<AdmittedInputs> {
             "bc" | "ll" => p,
             "o" | "a" => {
                 return Err(format!(
-                    "BD-B-NATIVE-INPUT: {} requires the mixed native/VM host link, deferred under bennett-4ht and bennett-driver-116; no partial output was linked",
+                    "BD-B-NATIVE-INPUT: {} requires the mixed native/VM host link, pending the published mixed-container and host-entry ABI; no partial output was linked",
                     p.display()
                 ));
             }
