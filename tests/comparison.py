@@ -39,6 +39,27 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='comparison-') as tmp:
         stages=[c['stage'] for c in manifest['commands']]
         assert stages.index('comparison-bitcode-link') < stages.index('comparison-support-link') < stages.index('comparison-closure-link')
         assert records[0]['native_support_sha256']==hashlib.sha256((sibling('bennett-runtimes')/f'dist/llvm{m}/musl-sysroot/lib/native-support.bc').read_bytes()).hexdigest()
+        # IR/bitcode production inputs cannot recover erased C definedness,
+        # but that independent diagnostic must not invalidate the native link.
+        for spelling in ('ll', 'bc'):
+            positional = d / ('original.' + spelling)
+            if spelling == 'll':
+                positional.write_text('define i32 @unused() { ret i32 9 }\n')
+            else:
+                run([llvm/'llvm-as', d/'original.ll', '-o', positional])
+            comparison_out = d / ('positional-' + spelling)
+            run([*args[:3], f'--bennett-out={comparison_out}',
+                 f'--bennett-comparison-layout={layout}', '--bennett-layout-data-base=65536', positional])
+            assert json.loads((comparison_out/'manifest.json').read_text())['status'] == 'linked'
+            classifier = json.loads((comparison_out/'native-classifiers.json').read_text())[0]
+            assert classifier['status'] == 'blocked' and 'original C' in classifier['reason'], classifier
+            for level in ('O0', 'O2'):
+                assert run([comparison_out/f'native-{level}']) == b''
+        explicit_out = d/'explicit-invalid-classifier'
+        explicit = subprocess.run([*args[:3], f'--bennett-out={explicit_out}',
+            f'--bennett-comparison-layout={layout}', '--bennett-layout-data-base=65536',
+            f'--bennett-classifier-input={d/"original.ll"}'], capture_output=True)
+        assert explicit.returncode != 0 and b'BD-E-NATIVE-CLASSIFIER' in explicit.stderr, explicit.stderr
         # Retain an explicit harness main before --only-needed closes startup.
         src.write_text(src.read_text().replace('int main(void)', 'int check(void)'))
         run([llvm/'clang','-emit-llvm','-c',src,'-o',d/'callee.bc'])

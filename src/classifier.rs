@@ -9,7 +9,7 @@ pub fn build(o: &Options, b: &mut Build, major: u32, arith: &Path) -> Result<()>
     let sysroot = o.required_sysroot()?;
     let mut sources = match o.get("bennett-classifier-input") {
         Some(p) => vec![absolute(p)?],
-        None => o.inputs.iter().map(absolute).collect::<Result<Vec<_>>>()?,
+        None => vec![],
     };
     if !sources.is_empty()
         && let Some(p) = o.get("bennett-native-input")
@@ -203,7 +203,7 @@ pub fn build(o: &Options, b: &mut Build, major: u32, arith: &Path) -> Result<()>
     b.record.set("source_classifiers", rows);
     // An adapter without original inputs is still useful as link evidence.
     // An explicitly requested classifier must fail loudly if it cannot build.
-    if !sources.is_empty() {
+    if o.get("bennett-classifier-input").is_some() {
         result.map_err(|e| format!("BD-E-NATIVE-CLASSIFIER: {e}"))?;
     }
     Ok(())
