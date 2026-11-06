@@ -62,7 +62,7 @@ outputs = ["build/libbennett-plugin-18.so", "build/libbennett-plugin-23.so"]
 [siblings."bennett-plugin-native-comparison"]
 repo = "bennett-plugin"
 sha = "5a092cded3ba3351ba8cc2977a7eaf3b40f46526"
-note = "dialect 0.2.13 plugin for explicit modern-profile and selected-entry adapter tests; bennett-driver-193/0ai"
+note = "locally materialised 5a092cd snapshot supplies dialect 0.2.13 and selected-entry prepare/check/finalise for closed_unit, dialect_profile, preparation and native_materialisation; earlier pushed 0ac6180 advertises 0.2.10 and fails dialect_profile with BD-E-VERSION; producer publication remains pending under bennett-driver-193/0ai"
 
 [[siblings."bennett-plugin-native-comparison".build]]
 name = "native comparison adapter (LLVM 18 and 23)"
@@ -71,8 +71,8 @@ outputs = ["build/libbennett-plugin-18.so", "build/libbennett-plugin-23.so"]
 needs = ["bennett-runtimes", "bennett-arith"]
 
 [siblings."bennett-dialect-spec"]
-sha = "de5f939bc070357f224bb3e6f1d61e8ea7784acd"
-note = "published device descriptor C declarations for the promised device-model test"
+sha = "e0456ee0e5ad514b4029d5458b3712b23f35242b"
+note = "pushed dialect publication provides spec/bennett_markers.h for device_models; its header blob 70ba398596631d0fb83adb2acbdf6b33ec76de98 is identical at local de5f939, so the unpushed 0.2.14 snapshot is unnecessary"
 
 [siblings."bennett-isa-spec-review"]
 repo = "bennett-isa-spec"
