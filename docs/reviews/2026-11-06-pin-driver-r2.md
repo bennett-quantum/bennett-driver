@@ -1,0 +1,19 @@
+# pin-driver review, round 2 — CLEAR
+
+Reviewed fix range **52066fb..45df2e7** (a76da89, 45df2e7), within main..job/pin-driver (**b14a3152eda949a2395d352a3a731c7d471d4679..45df2e7c750c8c0658df874f63b55593728c3d3c**). Exact reviewed implementation head: **45df2e7c750c8c0658df874f63b55593728c3d3c**. Review only; no implementation changes.
+
+**Verdict: CLEAR. P0/P1: none.** Previous **P0-1 / bennett-driver-5ab** is fixed. src/main.rs:222–236 resolves flag/environment paths once, with explicit flags taking precedence; src/main.rs:265 validates the selected sysroot include directory. The same typed sysroot supplies production frontend (src/main.rs:590), ordinary native codegen (src/native_host.rs:56), comparison support/frontend and strict links (src/native.rs:183,467), and source classifier (src/classifier.rs:66). Missing required, empty, or unusable configuration fails loudly. Ordinary native compilation with no requested sysroot retains host startup. Resolved external inputs also participate in comparison output-alias protection.
+
+Verification, headless with TMPDIR=$PWD/.tmp/rev-pin-driver-r2/tmp and CARGO_TARGET_DIR=$PWD/.tmp/rev-pin-driver-r2/target:
+
+- `timeout 240 cargo test --offline -j3 --test pin_discipline --bin bennett-driver -- --nocapture --test-threads=4` — PASS: six unit tests and the wrapper covering all fifteen Python pin/configuration cases. Includes overridden/unique headers, invalid roots, flag precedence, empty environment values, output preservation and environment/flag command equivalence across LLVM18/23.
+- `timeout 240 cargo test --offline -j3 --test arith_instances --test dialect_profile --test native_host --test preparation --test reports --test classifier --test comparison --test output_paths -- --nocapture --test-threads=4` — PASS: eight integration tests. Real generated arithmetic and native O0/O2 executions retain independent expected results. Host fixtures explicitly remove the freestanding sysroot; their execution assertions remain intact, and the report test now requires its intended unresolved symbol.
+- Independent `timeout 90 python3 -B -` probes retested the prior failure scenario: a supplied `limits.h` defines INT_MAX=17, and a sysroot-only header defines 29. Both majors and both configuration spellings build successfully and execute the probe with exit 0; frontend and host-codegen argv contain the selected root. A second probe explicitly pins all three libraries to isolate the regression from live siblings: both spellings return 0, while an empty include directory rejects missing limits.h instead of consulting host headers.
+- Read `git show main:src/main.rs`, `git show main:src/native_host.rs` and `git show 52066fb:src/main.rs`: the former environment branch omitted sysroot controls, so the overridden-header oracle would return 3 and the unique-header case would fail. No branch switch, worktree creation, baseline execution, full repository gate or sibling gate.
+- `git diff 52066fb..45df2e7 --check` — PASS.
+
+P2+ nits — **bennett-driver-gyx**, carrying unchanged **bennett-driver-9hd**: README.md:113–124 obsolete test/override guidance; gate.toml:10 and HANDOFF.md:3/README.md:130/tracked docs/PROGRESS.md pending quality housekeeping; tests/integration.py:31 tracker id in fixture-error output. No new fix-diff nits.
+
+Coverage: read closely all ten changed files and every external-path/sysroot consumer, alias admission, affected test assertions and main-side configuration code; skimmed unchanged surrounding linking/layout/report logic. Checked every COMMON anti-slop rule: no new hidden failure default, dispatch/state/predicate problem, unexplained policy number, trivial wrapper, process identifier or tracked scratch litter. Existing long execute/compare functions remain later quality-driver work as recorded in round 1. No capability narrowing or weakened/deleted test found.
+
+Provenance: implementer gpt-6.1-sol; reviewer gpt-6.1-sol, fresh session, D9.
