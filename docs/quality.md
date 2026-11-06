@@ -71,3 +71,813 @@ ASan capability directly. `SPEC_VERSIONS.toml` records the accepted 0.2.13 diale
 its pinned published specification, explicit historical 0.2.10 compatibility and
 unchanged ISA 0.8. README now describes explicit dependencies and the real test
 split. Native-host and pipeline negative fixtures pass after the diagnostic changes.
+
+The structural ratchet is one local gate check: `python3 scripts/quality.py`.
+`--show` prints current measurements; `--record` explicitly records a baseline
+change for review. The JSON below records each tracked Rust/C++/Python source
+file's function count, longest function, counts longer than 25/50/100/200/300
+lines, cognitive-complexity mass and trivial-wrapper count. Python uses AST
+control nesting; Rust/C++ use a reproducible lexical control-nesting proxy after
+removing comments/literals. This is a local regression measure, not a standard
+Sonar score. Short single-expression forwarding functions (at most six lines)
+are counted as wrappers; added wrappers cannot conceal a split.
+
+The check rejects an increase in any per-file complexity, longest function,
+length-tail count or wrapper count, plus new tracked litter or process identifiers.
+New files start from zero, so moving complexity requires an explicit reviewed
+baseline change. Deleted files cannot offset increases elsewhere. `Cargo.lock` is
+required source metadata and is excluded from transient-lock litter. Source test
+names and named promised switches may carry bead names; emitted messages and
+fixture bodies may not. These definitions and hand-derived control-depth cases
+are covered by eight ratchet mutation tests. No numerical target or coverage
+threshold is imposed.
+
+<!-- quality-baseline -->
+```json
+{
+  "files": {
+    "scripts/arith-instances.py": {
+      "complexity": 179,
+      "functions": 9,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 18,
+      "wrappers": 3
+    },
+    "scripts/finalise-build.py": {
+      "complexity": 14,
+      "functions": 4,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 1,
+      "wrappers": 4
+    },
+    "scripts/native-layout.py": {
+      "complexity": 89,
+      "functions": 7,
+      "length_tails": [
+        1,
+        1,
+        0,
+        0,
+        0
+      ],
+      "max_length": 78,
+      "wrappers": 0
+    },
+    "scripts/pinned_siblings.py": {
+      "complexity": 14,
+      "functions": 2,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 15,
+      "wrappers": 0
+    },
+    "scripts/plugin-identity.py": {
+      "complexity": 4,
+      "functions": 0,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 0,
+      "wrappers": 0
+    },
+    "scripts/quality.py": {
+      "complexity": 80,
+      "functions": 6,
+      "length_tails": [
+        2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 28,
+      "wrappers": 0
+    },
+    "src/arith.rs": {
+      "complexity": 14,
+      "functions": 1,
+      "length_tails": [
+        1,
+        1,
+        0,
+        0,
+        0
+      ],
+      "max_length": 77,
+      "wrappers": 0
+    },
+    "src/classifier.rs": {
+      "complexity": 35,
+      "functions": 1,
+      "length_tails": [
+        1,
+        1,
+        1,
+        1,
+        0
+      ],
+      "max_length": 207,
+      "wrappers": 0
+    },
+    "src/json.rs": {
+      "complexity": 15,
+      "functions": 10,
+      "length_tails": [
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 33,
+      "wrappers": 7
+    },
+    "src/llvm_utility.rs": {
+      "complexity": 20,
+      "functions": 3,
+      "length_tails": [
+        3,
+        1,
+        0,
+        0,
+        0
+      ],
+      "max_length": 53,
+      "wrappers": 0
+    },
+    "src/main.rs": {
+      "complexity": 199,
+      "functions": 37,
+      "length_tails": [
+        10,
+        7,
+        2,
+        0,
+        0
+      ],
+      "max_length": 136,
+      "wrappers": 7
+    },
+    "src/mode-preparation.cpp": {
+      "complexity": 198,
+      "functions": 4,
+      "length_tails": [
+        1,
+        1,
+        1,
+        0,
+        0
+      ],
+      "max_length": 182,
+      "wrappers": 0
+    },
+    "src/mode_preparation.rs": {
+      "complexity": 23,
+      "functions": 1,
+      "length_tails": [
+        1,
+        1,
+        0,
+        0,
+        0
+      ],
+      "max_length": 79,
+      "wrappers": 0
+    },
+    "src/native.rs": {
+      "complexity": 138,
+      "functions": 13,
+      "length_tails": [
+        5,
+        4,
+        3,
+        0,
+        0
+      ],
+      "max_length": 181,
+      "wrappers": 1
+    },
+    "src/native_adapter.rs": {
+      "complexity": 23,
+      "functions": 2,
+      "length_tails": [
+        2,
+        1,
+        0,
+        0,
+        0
+      ],
+      "max_length": 80,
+      "wrappers": 0
+    },
+    "src/native_host.rs": {
+      "complexity": 14,
+      "functions": 1,
+      "length_tails": [
+        1,
+        1,
+        0,
+        0,
+        0
+      ],
+      "max_length": 72,
+      "wrappers": 0
+    },
+    "src/options.rs": {
+      "complexity": 81,
+      "functions": 7,
+      "length_tails": [
+        1,
+        1,
+        1,
+        0,
+        0
+      ],
+      "max_length": 191,
+      "wrappers": 4
+    },
+    "src/output_paths.rs": {
+      "complexity": 33,
+      "functions": 3,
+      "length_tails": [
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 32,
+      "wrappers": 0
+    },
+    "src/process-entry.cpp": {
+      "complexity": 38,
+      "functions": 2,
+      "length_tails": [
+        1,
+        1,
+        1,
+        0,
+        0
+      ],
+      "max_length": 182,
+      "wrappers": 0
+    },
+    "src/process.rs": {
+      "complexity": 17,
+      "functions": 1,
+      "length_tails": [
+        1,
+        1,
+        1,
+        0,
+        0
+      ],
+      "max_length": 103,
+      "wrappers": 0
+    },
+    "src/report.rs": {
+      "complexity": 35,
+      "functions": 1,
+      "length_tails": [
+        1,
+        1,
+        0,
+        0,
+        0
+      ],
+      "max_length": 92,
+      "wrappers": 0
+    },
+    "tests/arith_conversions.py": {
+      "complexity": 14,
+      "functions": 3,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 4,
+      "wrappers": 1
+    },
+    "tests/arith_instances.py": {
+      "complexity": 19,
+      "functions": 2,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 4,
+      "wrappers": 1
+    },
+    "tests/arith_production.py": {
+      "complexity": 4,
+      "functions": 2,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 4,
+      "wrappers": 1
+    },
+    "tests/classes.py": {
+      "complexity": 5,
+      "functions": 1,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 4,
+      "wrappers": 0
+    },
+    "tests/classes.rs": {
+      "complexity": 0,
+      "functions": 1,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 3,
+      "wrappers": 1
+    },
+    "tests/classifier.py": {
+      "complexity": 11,
+      "functions": 1,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 4,
+      "wrappers": 0
+    },
+    "tests/closed_unit.py": {
+      "complexity": 1,
+      "functions": 1,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 6,
+      "wrappers": 0
+    },
+    "tests/comparison.py": {
+      "complexity": 21,
+      "functions": 1,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 4,
+      "wrappers": 0
+    },
+    "tests/device_models.py": {
+      "complexity": 6,
+      "functions": 0,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 0,
+      "wrappers": 0
+    },
+    "tests/device_models.rs": {
+      "complexity": 0,
+      "functions": 1,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 3,
+      "wrappers": 1
+    },
+    "tests/dialect_profile.py": {
+      "complexity": 7,
+      "functions": 2,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 6,
+      "wrappers": 1
+    },
+    "tests/environment.py": {
+      "complexity": 1,
+      "functions": 0,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 0,
+      "wrappers": 0
+    },
+    "tests/fixtures.rs": {
+      "complexity": 0,
+      "functions": 28,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 3,
+      "wrappers": 28
+    },
+    "tests/fixtures/device_clock.c": {
+      "complexity": 2,
+      "functions": 2,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 20,
+      "wrappers": 0
+    },
+    "tests/hook.py": {
+      "complexity": 4,
+      "functions": 0,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 0,
+      "wrappers": 0
+    },
+    "tests/input_headers.py": {
+      "complexity": 34,
+      "functions": 0,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 0,
+      "wrappers": 0
+    },
+    "tests/inputs.py": {
+      "complexity": 1,
+      "functions": 1,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 4,
+      "wrappers": 0
+    },
+    "tests/integration.py": {
+      "complexity": 25,
+      "functions": 3,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 8,
+      "wrappers": 1
+    },
+    "tests/merged_module.py": {
+      "complexity": 4,
+      "functions": 1,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 4,
+      "wrappers": 0
+    },
+    "tests/modes.py": {
+      "complexity": 18,
+      "functions": 1,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 6,
+      "wrappers": 0
+    },
+    "tests/native_byval.py": {
+      "complexity": 8,
+      "functions": 0,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 0,
+      "wrappers": 0
+    },
+    "tests/native_faults.py": {
+      "complexity": 13,
+      "functions": 0,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 0,
+      "wrappers": 0
+    },
+    "tests/native_host.py": {
+      "complexity": 13,
+      "functions": 2,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 2,
+      "wrappers": 2
+    },
+    "tests/native_materialisation.py": {
+      "complexity": 18,
+      "functions": 2,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 4,
+      "wrappers": 1
+    },
+    "tests/native_memory.py": {
+      "complexity": 26,
+      "functions": 3,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 4,
+      "wrappers": 2
+    },
+    "tests/native_symbols.py": {
+      "complexity": 47,
+      "functions": 1,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 4,
+      "wrappers": 0
+    },
+    "tests/output_paths.py": {
+      "complexity": 8,
+      "functions": 0,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 0,
+      "wrappers": 0
+    },
+    "tests/pin_discipline.py": {
+      "complexity": 62,
+      "functions": 20,
+      "length_tails": [
+        2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 38,
+      "wrappers": 0
+    },
+    "tests/pinned_fixture.py": {
+      "complexity": 2,
+      "functions": 0,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 0,
+      "wrappers": 0
+    },
+    "tests/pipeline.rs": {
+      "complexity": 0,
+      "functions": 4,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 19,
+      "wrappers": 1
+    },
+    "tests/pipeline_metadata.py": {
+      "complexity": 6,
+      "functions": 0,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 0,
+      "wrappers": 0
+    },
+    "tests/preparation.py": {
+      "complexity": 16,
+      "functions": 1,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 4,
+      "wrappers": 0
+    },
+    "tests/process.py": {
+      "complexity": 54,
+      "functions": 2,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 4,
+      "wrappers": 1
+    },
+    "tests/process_runtime_apis.py": {
+      "complexity": 6,
+      "functions": 1,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 4,
+      "wrappers": 0
+    },
+    "tests/quality.py": {
+      "complexity": 2,
+      "functions": 10,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 13,
+      "wrappers": 1
+    },
+    "tests/reports.py": {
+      "complexity": 37,
+      "functions": 0,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 0,
+      "wrappers": 0
+    },
+    "tests/reversible.py": {
+      "complexity": 13,
+      "functions": 0,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 0,
+      "wrappers": 0
+    },
+    "tests/support/mod.rs": {
+      "complexity": 0,
+      "functions": 1,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 19,
+      "wrappers": 0
+    },
+    "tests/toolchain.py": {
+      "complexity": 4,
+      "functions": 3,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 15,
+      "wrappers": 0
+    }
+  },
+  "litter": [],
+  "process_identifiers": []
+}
+```

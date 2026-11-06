@@ -239,3 +239,8 @@ mod reversible {
 fn merged_module_executes_like_independent_native_sources() {
     support::fixture("merged_module.py");
 }
+
+#[test]
+fn quality_baseline_rejects_independent_regression_classes() {
+    support::fixture("quality.py");
+}
