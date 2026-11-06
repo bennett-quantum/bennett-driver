@@ -1,13 +1,14 @@
 """Native support adapter diagnostics; these are NOT plugin acceptance tests."""
+from toolchain import configure, sibling
 import hashlib, json, pathlib, subprocess, sys, tempfile
 root=pathlib.Path(__file__).resolve().parents[1]
-ws=root.parent
 def run(args):
     p=subprocess.run(list(map(str,args)),capture_output=True)
     assert p.returncode==0,p.stderr.decode()
     return p.stdout
 with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='comparison-') as tmp:
     for m in (18,23):
+        configure(m)
         d=pathlib.Path(tmp)/str(m);d.mkdir()
         llvm=pathlib.Path(f'/usr/lib/llvm-{m}/bin')
         # No marker, no materialiser substitution: a diagnostic already-materialised
@@ -37,7 +38,7 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='comparison-') as tmp:
         manifest=json.loads((out/'manifest.json').read_text())
         stages=[c['stage'] for c in manifest['commands']]
         assert stages.index('comparison-bitcode-link') < stages.index('comparison-support-link') < stages.index('comparison-closure-link')
-        assert records[0]['native_support_sha256']==hashlib.sha256((ws/f'bennett-runtimes/dist/llvm{m}/musl-sysroot/lib/native-support.bc').read_bytes()).hexdigest()
+        assert records[0]['native_support_sha256']==hashlib.sha256((sibling('bennett-runtimes')/f'dist/llvm{m}/musl-sysroot/lib/native-support.bc').read_bytes()).hexdigest()
         # Retain an explicit harness main before --only-needed closes startup.
         src.write_text(src.read_text().replace('int main(void)', 'int check(void)'))
         run([llvm/'clang','-emit-llvm','-c',src,'-o',d/'callee.bc'])

@@ -3,6 +3,7 @@
 The pinned gate tool's self-test owns hook protocol, worktree and isolation
 behavior. This test neither invokes Git nor repeats those protocol fixtures.
 """
+from toolchain import sibling
 import hashlib
 import os
 import pathlib
@@ -12,7 +13,7 @@ import tomllib
 
 root = pathlib.Path(__file__).resolve().parents[1]
 config = tomllib.loads((root / 'gate.toml').read_text())
-assert config['schema'] == 1 and config['repo'] == root.name
+assert config['schema'] == 1 and config['repo'] == 'bennett-driver'
 assert re.fullmatch('[0-9a-f]{40}', config['tool_sha'])
 assert 0 < config['timeout_s'] <= 7200
 assert config['env']['CARGO_TARGET_DIR'].startswith('{root}/.tmp/')
@@ -32,7 +33,7 @@ assert {f'build/libbennett-plugin-{major}.so' for major in (18, 23)} <= outputs
 runtime = config['siblings']['bennett-runtimes']
 expected = runtime.get('files', {}).get('scripts/native-check')
 assert expected, 'gate must bind the required published scripts/native-check adapter'
-adapter = root.parent / 'bennett-runtimes/scripts/native-check'
+adapter = sibling('bennett-runtimes') / 'scripts/native-check'
 assert adapter.is_file() and os.access(adapter, os.X_OK), adapter
 assert hashlib.sha256(adapter.read_bytes()).hexdigest() == expected, adapter
 

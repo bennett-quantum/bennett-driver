@@ -1,7 +1,7 @@
 """Resolved globals, interface buffers and arena objects keep exact ELF addresses."""
 import hashlib,json,os,pathlib,subprocess,sys,tempfile
 from contextlib import nullcontext
-from toolchain import target_headers
+from toolchain import target_headers, configure, sibling
 root=pathlib.Path(__file__).resolve().parents[1]
 def run(args):
  p=subprocess.run(list(map(str,args)),capture_output=True,timeout=120)
@@ -12,6 +12,7 @@ if evidence:pathlib.Path(evidence).mkdir(parents=True,exist_ok=False)
 with (nullcontext(evidence) if evidence else tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='native-symbols-')) as temp:
  d=pathlib.Path(temp)
  for major in (18,23):
+  configure(major)
   for kind in ('global','interface','arena'):
    symbol='counter' if kind=='global' else 'region'
    size=4 if kind=='global' else 16

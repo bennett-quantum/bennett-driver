@@ -1,4 +1,5 @@
 """Real named-format instances: literal ABI, exact one, and fenv preservation."""
+from toolchain import configure, sibling
 import hashlib,json,os,pathlib,subprocess,sys,tempfile
 from contextlib import nullcontext
 root=pathlib.Path(__file__).resolve().parents[1]
@@ -19,6 +20,7 @@ evidence=os.environ.get('BENNETT_DRIVER_ARITH_EVIDENCE')
 if evidence:pathlib.Path(evidence).mkdir(parents=True,exist_ok=False)
 with (nullcontext(evidence) if evidence else tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='arith-conversions-')) as temp:
  d=pathlib.Path(temp);major=23;llvm=pathlib.Path('/usr/lib/llvm-23/bin')
+ configure(major)
  seed=d/'seed.c';seed.write_text('int main(void) { return 0; }')
  header='\n'.join(x for x in run([llvm/'clang','-S','-emit-llvm',seed,'-o','-']).decode().splitlines() if x.startswith('target '))+'\n'
  declarations=['@__bennett_rt_fenv = external global { i32, i32 }, align 4']

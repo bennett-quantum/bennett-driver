@@ -1,20 +1,20 @@
 """Real descriptor-to-model prologue acceptance, independent of runtime tests."""
 import hashlib, json, os, pathlib, subprocess, sys, tempfile
 from contextlib import nullcontext
-from toolchain import flags
+from toolchain import flags, configure, sibling
 root = pathlib.Path(__file__).resolve().parents[1]
-plugin_root = pathlib.Path(os.environ.get('BENNETT_DRIVER_MODERN_PLUGIN_ROOT') or root.parent/'bennett-plugin')
+plugin_root = sibling('bennett-plugin-native-comparison')
 evidence = os.environ.get('BENNETT_DRIVER_DEVICE_EVIDENCE')
 if evidence:
     pathlib.Path(evidence).mkdir(parents=True, exist_ok=False)
 with (nullcontext(evidence) if evidence else tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='device-models-')) as temp:
     d = pathlib.Path(temp)
-    header = root.parent/'bennett-dialect-spec/spec/bennett_markers.h'
+    header = sibling('bennett-dialect-spec')/'spec/bennett_markers.h'
     source = d/'clock.c'
     source.write_text((root/'tests/fixtures/device_clock.c').read_text().replace('"bennett_markers.h"', '"'+str(header)+'"'))
-    reference = pathlib.Path(os.environ.get('BENNETT_DRIVER_DEVICE_REFERENCE') or
-        root.parent/'bennett-isa-spec-review/reference-interpreter/target/release/bennett-isa-ref')
+    reference = sibling('bennett-isa-spec-review')/'reference-interpreter/target/release/bennett-isa-ref'
     for major in (18, 23):
+        configure(major)
         out = d/f'out-{major}'
         plugin = plugin_root/f'build/libbennett-plugin-{major}.so'
         result = subprocess.run([sys.argv[1], *flags(major, plugin=False), f'--bennett-plugin={plugin}',

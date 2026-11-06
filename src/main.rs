@@ -19,7 +19,7 @@ use std::{
 type Result<T> = std::result::Result<T, String>;
 const DIALECT: &str = "0.2.13";
 const ISA: &str = "0.8";
-const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.13 (historical 0.2.10 accepted explicitly) -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8,\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n --bennett-snapshot=FILE --bennett-class=NAME --bennett-vscale=V\n -bennett-closed-unit --bennett-oracle=SYMBOL (requires callable wrapper handoff)\n --bennett-emit=process-bitcode (preparation stage; manifest status prepared)\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-comparison-entry=SYMBOL --bennett-comparison-launch-record=FILE\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n --bennett-classifier-input=FILE (original C, UBSan-minimal diagnostic)\n Plain O2 comparison and O0 diagnostic; full ASan requires its freestanding runtime publication\n";
+const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.13 (historical 0.2.10 accepted explicitly) -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8,\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-arith-generator=FILE --bennett-native-check=FILE --bennett-sysroot=DIR\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n --bennett-snapshot=FILE --bennett-class=NAME --bennett-vscale=V\n -bennett-closed-unit --bennett-oracle=SYMBOL (requires callable wrapper handoff)\n --bennett-emit=process-bitcode (preparation stage; manifest status prepared)\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-comparison-entry=SYMBOL --bennett-comparison-launch-record=FILE\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n --bennett-classifier-input=FILE (original C, UBSan-minimal diagnostic)\n Plain O2 comparison and O0 diagnostic; full ASan requires its freestanding runtime publication\n Environment: TMPDIR is required. External paths also accept BENNETT_DRIVER_ followed by\n PLUGIN, RUNTIMES, ARITH, ARITH_GENERATOR, NATIVE_CHECK, NATIVE_SUPPORT or SYSROOT.\n";
 #[derive(Debug)]
 struct Options {
     values: BTreeMap<String, String>,
@@ -247,7 +247,31 @@ fn write(path: impl AsRef<Path>, content: impl AsRef<[u8]>) -> Result<()> {
 fn read(path: impl AsRef<Path>) -> Result<String> {
     fs::read_to_string(path.as_ref()).map_err(|e| format!("read {}: {e}", path.as_ref().display()))
 }
-fn headless(cmd: &mut Command) {
+fn configured_path(o: &Options, key: &str) -> Result<PathBuf> {
+    let variable = format!(
+        "BENNETT_DRIVER_{}",
+        key.trim_start_matches("bennett-")
+            .to_uppercase()
+            .replace('-', "_")
+    );
+    let path = o
+        .get(key)
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::var_os(&variable)
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from)
+        })
+        .ok_or_else(|| format!("BD-E-CONFIG: missing --{key}=PATH or {variable}"))?;
+    absolute(path)
+}
+fn task_tmpdir() -> Result<PathBuf> {
+    env::var_os("TMPDIR")
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+        .ok_or_else(|| "BD-E-CONFIG: missing TMPDIR; set it to a writable task directory".into())
+}
+fn headless(cmd: &mut Command) -> Result<()> {
     for key in [
         "DISPLAY",
         "WAYLAND_DISPLAY",
@@ -256,18 +280,13 @@ fn headless(cmd: &mut Command) {
     ] {
         cmd.env_remove(key);
     }
-    cmd.env(
-        "TMPDIR",
-        env::var_os("TMPDIR")
-            .filter(|path| !path.is_empty())
-            .map(PathBuf::from)
-            .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join(".tmp")),
-    );
+    cmd.env("TMPDIR", task_tmpdir()?);
+    Ok(())
 }
 fn sha(path: &Path) -> Result<String> {
     let mut c = Command::new("sha256sum");
     c.arg("--").arg(path);
-    headless(&mut c);
+    headless(&mut c)?;
     let o = c.output().map_err(|e| format!("sha256sum: {e}"))?;
     if !o.status.success() {
         return Err(format!(
@@ -311,7 +330,7 @@ impl Build {
     fn run(&mut self, stage: &str, argv: Vec<String>, arith: Option<&Path>) -> Result<String> {
         let mut c = Command::new(&argv[0]);
         c.args(&argv[1..]).stdin(Stdio::null());
-        headless(&mut c);
+        headless(&mut c)?;
         // No caller environment may silently override the library recorded by the driver.
         c.env_remove("BENNETT_ARITH_BITCODE");
         if let Some(p) = arith {
@@ -451,21 +470,9 @@ fn admit_dialect_flag(ir: &str, expected: &str) -> Result<()> {
 }
 fn execute(o: &Options, b: &mut Build) -> Result<()> {
     let m = o.major()?;
-    let ws = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let library =
-        |key: &str, default: PathBuf| absolute(o.get(key).map(PathBuf::from).unwrap_or(default));
-    let runtime = library(
-        "bennett-runtimes",
-        ws.join(format!("bennett-runtimes/dist/llvm{m}/bennett-runtimes.bc")),
-    )?;
-    let arith = library(
-        "bennett-arith",
-        ws.join(format!("bennett-arith/dist/llvm{m}/bennett-arith.bc")),
-    )?;
-    let plugin = library(
-        "bennett-plugin",
-        ws.join(format!("bennett-plugin/build/libbennett-plugin-{m}.so")),
-    )?;
+    let runtime = configured_path(o, "bennett-runtimes")?;
+    let arith = configured_path(o, "bennett-arith")?;
+    let plugin = configured_path(o, "bennett-plugin")?;
     for (key, p) in [
         ("runtimes", &runtime),
         ("arith", &arith),
@@ -831,7 +838,7 @@ fn finalise_build(b: &Build) -> Result<()> {
     c.arg("-c")
         .arg(include_str!("../scripts/finalise-build.py"))
         .arg(&b.out);
-    headless(&mut c);
+    headless(&mut c)?;
     let result = c.output().map_err(|e| format!("build-record: {e}"))?;
     if !result.status.success() {
         return Err(format!(
@@ -853,9 +860,8 @@ fn main() {
     }
     let mut report_written = false;
     let result = (|| -> Result<()> {
-        fs::create_dir_all(Path::new(env!("CARGO_MANIFEST_DIR")).join(".tmp"))
-            .map_err(|e| e.to_string())?;
         let o = Options::parse(&args)?;
+        fs::create_dir_all(task_tmpdir()?).map_err(|e| format!("BD-E-CONFIG: TMPDIR: {e}"))?;
         let out = absolute(o.get("bennett-out").unwrap())?;
         if out.exists()
             && fs::read_dir(&out)

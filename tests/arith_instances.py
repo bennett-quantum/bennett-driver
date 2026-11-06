@@ -1,4 +1,5 @@
 """Exercise the producer's real offline generator, not a numerical stub."""
+from toolchain import configure, sibling
 import hashlib, json, pathlib, subprocess, sys, tempfile
 
 root = pathlib.Path(__file__).resolve().parents[1]
@@ -11,6 +12,7 @@ def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
 with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='arith-instances-') as temp:
     d = pathlib.Path(temp)
     for major in (18,23):
+        configure(major)
         llvm = pathlib.Path(f'/usr/lib/llvm-{major}/bin')
         seed = d/f'seed-{major}.c';seed.write_text('int main(void) { return 0; }')
         header = run([llvm/'clang','-S','-emit-llvm',seed,'-o','-']).decode()

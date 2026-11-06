@@ -2,11 +2,10 @@
 """Real external-tool regression against a frozen rung-2 evidence directory."""
 import hashlib, json, os, pathlib, shutil, subprocess, sys, tempfile, tomllib
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-WS = ROOT.parent
+from toolchain import configure, sibling
 EXE = pathlib.Path(sys.argv[1]).resolve()
 for name in ('DISPLAY','WAYLAND_DISPLAY','DBUS_SESSION_BUS_ADDRESS','BROWSER'):
     os.environ.pop(name, None)
-os.environ['TMPDIR'] = str(ROOT/'.tmp')
 (ROOT/'.tmp').mkdir(exist_ok=True)
 def run(args):
     p = subprocess.run(list(map(str,args)), capture_output=True)
@@ -15,19 +14,7 @@ def run(args):
 def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
 def publication(repo,m,digest,job):
     relative=f'dist/llvm{m}/{repo}.bc'
-    # A runner that forbids Git can supply immutable published artifacts.
-    # Require the exact evidence digest; this never changes expected launches.
-    directory=os.environ.get('BENNETT_DRIVER_TEST_PUBLICATIONS')
-    if directory:
-        key={'bennett-runtimes':'runtimes','bennett-arith':'arith'}[repo]
-        pin=json.loads((pathlib.Path(directory)/'manifest.json').read_text())[str(m)][key]
-        assert pin['sha256']==digest, f'Explicit {repo} LLVM{m} pin differs from evidence'
-        blob=pathlib.Path(pin['path']).read_bytes()
-        assert hashlib.sha256(blob).hexdigest()==digest, f'Explicit publication changed: {pin["path"]}'
-    else:
-        # Historical regression publications are separate pinned sibling aliases.
-        # Never search the live tree's Git history under gate isolation.
-        blob=(WS/(repo+'-rung2')/relative).read_bytes()
+    blob=(sibling(repo+'-rung2')/relative).read_bytes()
     assert hashlib.sha256(blob).hexdigest()==digest, f'Pinned {repo} LLVM{m} publication differs: {digest}'
     path=pathlib.Path(job)/f'{repo}-{m}.bc'
     path.write_bytes(blob)
@@ -35,13 +22,13 @@ def publication(repo,m,digest,job):
     return path
 
 evidence = pathlib.Path(os.environ.get('BENNETT_RUNG2_EVIDENCE') or
-    WS/'bennett-conformance/ladder/rung-2/evidence/driver-regression').resolve()
+    sibling('bennett-conformance')/'ladder/rung-2/evidence/driver-regression').resolve()
 print(f'Rung-2 evidence: {evidence}', flush=True)
-fixtures = WS/'bennett-conformance/ladder/rung-2/fixtures'
+fixtures = sibling('bennett-conformance')/'ladder/rung-2/fixtures'
 report = evidence/'report.json'
 if not report.is_file():
     raise SystemExit(f'BD-E-TEST-FIXTURE: required published rung-2 fixture is missing: {report}; '
-        'bennett-driver-3j4 requires conformance to publish the tracked driver-regression fixture '
+        'bennett-driver-ppz requires conformance to publish the tracked driver-regression fixture '
         'and the gate to pin that publication; no live sibling .tmp fallback is permitted')
 evidence_manifest = json.loads(report.read_text())['manifest']
 gate_config=tomllib.loads((ROOT/'gate.toml').read_text())
@@ -50,11 +37,12 @@ for name,digest in evidence_manifest['fixture_sha256'].items():
     assert sha(fixtures/name)==digest, f'Published rung-2 fixture changed: {name}'
 with tempfile.TemporaryDirectory(prefix='integration-',dir=ROOT/'.tmp') as job:
     for m in (18,23):
+        configure(m)
         out = pathlib.Path(job)/str(m)
         # gate.toml builds this immutable sibling once per implementation SHA.
         # Build paths may change the .so bytes; the actual hash is still bound
         # into the driver manifest and certificate build record.
-        plugin_source = pathlib.Path(os.environ.get('BENNETT_RUNG2_PLUGIN_DIR') or WS/'bennett-plugin/build')/f'libbennett-plugin-{m}.so'
+        plugin_source = (sibling('bennett-plugin')/'build')/f'libbennett-plugin-{m}.so'
         plugin = pathlib.Path(job)/f'plugin-{m}.so'
         shutil.copyfile(plugin_source, plugin)
         plugin_digest = sha(plugin)
@@ -114,7 +102,7 @@ with tempfile.TemporaryDirectory(prefix='integration-',dir=ROOT/'.tmp') as job:
         native_record = out/'native-comparison.json'
         p = subprocess.run([str(EXE), f'--bennett-llvm-major={m}',
             f'--bennett-materialised={out/"device.bc"}', f'--bennett-arith={arith}',
-            f'--bennett-runtimes={WS}/bennett-runtimes/dist/llvm{m}/bennett-runtimes.bc',
+            f'--bennett-runtimes={sibling("bennett-runtimes")}/dist/llvm{m}/bennett-runtimes.bc',
             f'--bennett-native-input={fixtures/"main_golden.c"}',
             f'--bennett-comparison-record={native_record}'],capture_output=True)
         assert p.returncode != 0, 'unexpected native closure: audit then update this blocker regression'

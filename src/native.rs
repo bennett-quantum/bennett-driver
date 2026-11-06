@@ -50,22 +50,16 @@ fn audit_markers(b: &mut Build, m: u32, p: &Path) -> Result<()> {
 }
 pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
     let m = o.major()?;
-    let ws = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let device = absolute(
         o.get("bennett-materialised")
             .map(PathBuf::from)
             .unwrap_or(b.out.join("device.bc")),
     )?;
-    let runtime = absolute(
-        o.get("bennett-runtimes")
-            .map(PathBuf::from)
-            .unwrap_or(ws.join(format!("bennett-runtimes/dist/llvm{m}/bennett-runtimes.bc"))),
-    )?;
-    let arith = absolute(
-        o.get("bennett-arith")
-            .map(PathBuf::from)
-            .unwrap_or(ws.join(format!("bennett-arith/dist/llvm{m}/bennett-arith.bc"))),
-    )?;
+    let runtime = configured_path(o, "bennett-runtimes")?;
+    let arith = configured_path(o, "bennett-arith")?;
+    let adapter = configured_path(o, "bennett-native-check")?;
+    let support = configured_path(o, "bennett-native-support")?;
+    let sysroot = configured_path(o, "bennett-sysroot")?;
     let record_path = absolute(
         o.get("bennett-comparison-record")
             .map(PathBuf::from)
@@ -99,12 +93,7 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
             protected.push(absolute(path)?);
         }
     }
-    protected.extend([
-        ws.join("bennett-runtimes/scripts/native-check"),
-        ws.join(format!(
-            "bennett-runtimes/dist/llvm{m}/musl-sysroot/lib/native-support.bc"
-        )),
-    ]);
+    protected.extend([adapter.clone(), support.clone(), sysroot.clone()]);
     let mut destinations = vec![
         ("comparison record", record_path.clone()),
         ("O2 executable", exe.clone()),
@@ -196,11 +185,7 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
             support.extend([
                 "-nostdinc".into(),
                 "-isystem".into(),
-                ws.join(format!(
-                    "bennett-runtimes/dist/llvm{m}/musl-sysroot/include"
-                ))
-                .display()
-                .to_string(),
+                sysroot.join("include").display().to_string(),
             ]);
             support.extend(sysroot_flags(o)?);
             b.run("native-support", support, None)?;
@@ -228,11 +213,6 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
     )?;
     audit_markers(b, m, &linked)?;
     let checked = b.out.join("comparison-checked.bc");
-    let adapter = absolute(
-        o.get("bennett-native-check")
-            .map(PathBuf::from)
-            .unwrap_or(ws.join("bennett-runtimes/scripts/native-check")),
-    )?;
     b.record.set(
         "native_check_adapter",
         artifact(&adapter, o.get("bennett-native-check-sha256"))?,
@@ -305,13 +285,6 @@ pub fn compare(o: &Options, b: &mut Build) -> Result<()> {
         "native_detection",
         artifact(&b.out.join("native-detection.json"), None)?,
     );
-    let support = absolute(
-        o.get("bennett-native-support")
-            .map(PathBuf::from)
-            .unwrap_or(ws.join(format!(
-                "bennett-runtimes/dist/llvm{m}/musl-sysroot/lib/native-support.bc"
-            ))),
-    )?;
     b.record.set(
         "native_support",
         artifact(&support, o.get("bennett-native-support-sha256"))?,

@@ -1,10 +1,9 @@
 """Process-entry component checks; native diagnostics do not establish R acceptance."""
 import hashlib, json, os, pathlib, re, subprocess, sys, tempfile
 from contextlib import nullcontext
-from toolchain import flags
+from toolchain import flags, configure, sibling
 
 root=pathlib.Path(__file__).resolve().parents[1]
-ws=root.parent
 exe=pathlib.Path(sys.argv[1]).resolve()
 def run(args, **kwargs):
     p=subprocess.run(list(map(str,args)),capture_output=True,timeout=120,**kwargs)
@@ -41,8 +40,9 @@ if evidence: pathlib.Path(evidence).mkdir(parents=True,exist_ok=False)
 with (nullcontext(evidence) if evidence else tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='process-')) as temp:
     d=pathlib.Path(temp)
     for major in (18,23):
+        configure(major)
         llvm=pathlib.Path(f'/usr/lib/llvm-{major}/bin')
-        sysroot=ws/f'bennett-runtimes/dist/llvm{major}/musl-sysroot'
+        sysroot=sibling('bennett-runtimes')/f'dist/llvm{major}/musl-sysroot'
         c=d/f'program-{major}.c';c.write_text(source)
         out=d/f'production-{major}'
         command=[exe,*flags(major),f'--bennett-llvm-major={major}','-bennett-dialect=0.2.10',
@@ -76,7 +76,7 @@ with (nullcontext(evidence) if evidence else tempfile.TemporaryDirectory(dir=roo
         # an unprepared process, even when llvm-link accepts opaque pointers.
         missing=d/f'missing-runtime-{major}.bc'
         run([llvm/'llvm-extract','--delete','--func=__bennett_rt_prepare_process',
-            ws/f'bennett-runtimes/dist/llvm{major}/bennett-runtimes.bc','-o',missing])
+            sibling('bennett-runtimes')/f'dist/llvm{major}/bennett-runtimes.bc','-o',missing])
         wrong_ir=d/f'wrong-helper-{major}.ll'
         wrong_ir.write_text('define void @__bennett_rt_prepare_process(i64 %argc, ptr %argv, ptr %envp) { ret void }\n')
         wrong_bc=d/f'wrong-helper-{major}.bc'
@@ -95,9 +95,9 @@ with (nullcontext(evidence) if evidence else tempfile.TemporaryDirectory(dir=roo
         # runtime. This is an isolated entry-preparation diagnostic, not a
         # substitute for the plugin's actual materialised comparison module.
         layout=d/f'layout-{major}.json'
-        # The fixed-IR codegen maps are retained in the process evidence.
-        # Use their first following page, 0x12000; exact equality stays mandatory.
-        layout.write_text(json.dumps(dict(null_size=4096,ptr_width=64,heap_base=73728,
+        # The pinned runtime's LLVM18 data end is 0x10b48 for O0/O2.
+        # Use its first following page, 0x11000; exact equality stays mandatory.
+        layout.write_text(json.dumps(dict(null_size=4096,ptr_width=64,heap_base=69632,
             heap_limit_max=1048576,globals={},interface_regions={})))
         for name,call in [('supplied','program(argc,argv,envp)'),('empty','program(0,0,0)')]:
             harness=d/f'{name}-{major}.c'
@@ -201,8 +201,8 @@ extern int program(int,char **,char **);
 int main(int argc,char **argv,char **envp) { program(argc,argv,envp); write(1,"AFTER",5); return 42; }
 ''')
         exit_layout=d/f'exit-layout-{major}.json'
-        # Exit/stdio uses its measured fixed-IR codegen page; exact equality is checked.
-        exit_layout.write_text(json.dumps(dict(null_size=4096,ptr_width=64,heap_base=73728,
+        # Pinned LLVM18 exit/stdio O0/O2 data ends at 0x10d48: next page 0x11000.
+        exit_layout.write_text(json.dumps(dict(null_size=4096,ptr_width=64,heap_base=69632,
             heap_limit_max=1048576,globals={},interface_regions={})))
         exit_out=d/f'exit-native-{major}'
         run([exe,f'--bennett-llvm-major={major}',f'--bennett-materialised={exit_prepared/"process-prepared.bc"}',

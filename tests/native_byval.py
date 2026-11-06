@@ -1,4 +1,5 @@
 """A byval argument is a live callee-local object, not an invalid pointer."""
+from toolchain import configure, sibling
 import hashlib, json, pathlib, subprocess, sys, tempfile
 
 root=pathlib.Path(__file__).resolve().parents[1]
@@ -27,6 +28,7 @@ define i32 @main() {
         heap_limit_max=1048576,globals={},interface_regions={})))
     failures=[]
     for major in (18,23):
+        configure(major)
         out=d/f'out-{major}'
         p=subprocess.run([sys.argv[1],f'--bennett-llvm-major={major}',
             f'--bennett-materialised={ir}',f'--bennett-out={out}',

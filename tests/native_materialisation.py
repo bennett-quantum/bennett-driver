@@ -1,7 +1,7 @@
 """Use the published plugin adapter on an actual produced marked module."""
 import hashlib,json,os,pathlib,subprocess,sys,tempfile
 from contextlib import nullcontext
-from toolchain import flags, target_headers
+from toolchain import flags, target_headers, configure, sibling
 root=pathlib.Path(__file__).resolve().parents[1]
 def run(args):
  p=subprocess.run(list(map(str,args)),capture_output=True,timeout=120)
@@ -13,8 +13,9 @@ dialect=os.environ.get('BENNETT_DRIVER_NATIVE_DIALECT', '0.2.13')
 if evidence:pathlib.Path(evidence).mkdir(parents=True,exist_ok=False)
 with (nullcontext(evidence) if evidence else tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='native-materialisation-')) as temp:
  d=pathlib.Path(temp)
- plugin_root=pathlib.Path(os.environ.get('BENNETT_DRIVER_NATIVE_PLUGIN_ROOT') or root.parent/'bennett-plugin')
+ plugin_root=sibling('bennett-plugin-native-comparison')
  for major in (18,23):
+  configure(major)
   source=d/f'marked-{major}.ll'
   source.write_text(target_headers(major)+'''declare ptr @__bennett_qalloc(i64, i64)
 declare void @__bennett_qfree(ptr)

@@ -14,7 +14,7 @@ pub enum Phase {
     HostImports,
 }
 impl Adapter {
-    pub fn select(o: &Options, major: u32, device: &Path) -> Result<Option<Self>> {
+    pub fn select(o: &Options, _major: u32, device: &Path) -> Result<Option<Self>> {
         let Some(entry) = o.get("bennett-comparison-entry").or(o.get("bennett-entry")) else {
             if o.get("bennett-comparison-launch-record").is_some() {
                 return Err(
@@ -24,13 +24,8 @@ impl Adapter {
             }
             return Ok(None);
         };
-        let ws = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
         Ok(Some(Self {
-            plugin: absolute(
-                o.get("bennett-plugin").map(PathBuf::from).unwrap_or(
-                    ws.join(format!("bennett-plugin/build/libbennett-plugin-{major}.so")),
-                ),
-            )?,
+            plugin: configured_path(o, "bennett-plugin")?,
             receipt: absolute(
                 o.get("bennett-comparison-launch-record")
                     .map(PathBuf::from)

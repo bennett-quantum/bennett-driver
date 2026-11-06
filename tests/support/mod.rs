@@ -5,8 +5,9 @@ pub fn fixture(script: &str) {
         .arg(
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("tests")
-                .join(script),
+                .join("pinned_fixture.py"),
         )
+        .arg(script)
         .arg(env!("CARGO_BIN_EXE_bennett-driver"))
         .output()
         .unwrap();

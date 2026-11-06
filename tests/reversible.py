@@ -1,12 +1,12 @@
 import json, os, pathlib, subprocess, sys, tempfile
-from toolchain import flags, target_headers
+from toolchain import flags, target_headers, configure, sibling
 root = pathlib.Path(__file__).resolve().parents[1]
-ws = root.parent
 with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='rung3-') as temp:
     for m in (18,23):
+        configure(m)
         out = pathlib.Path(temp)/str(m)
         diagnostic=pathlib.Path(temp)/f'effect-console-{m}.ll'
-        diagnostic.write_text(target_headers(m)+(ws/'bennett-conformance/ladder/rung-3/fixtures/effect-console-r.ll').read_text())
+        diagnostic.write_text(target_headers(m)+(sibling('bennett-conformance')/'ladder/rung-3/fixtures/effect-console-r.ll').read_text())
         argv = [sys.argv[1], '--bennett-tier=reversible', '--bennett-entry=main',
                 '-bennett-dialect=0.2.10', '-bennett-isa=0.8', f'--bennett-llvm-major={m}',
                 '-bennett-out='+str(out), str(diagnostic)]
@@ -23,8 +23,10 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='rung3-') as temp:
                 assert record['status']=='blocked',record
                 assert (out/'build.json').is_file(), 'blocked production still requires build metadata'
             else:
-                assert reports[0]['code']=='DRIVER-PLUGIN-REFUSAL', reports
+                assert reports[0]['code']=='BD-B-MODE-BACKEND', reports
                 assert reports[1]['code']=='BD-B-ISA7', reports
+                assert record['status']=='blocked', record
+                assert not (out/'build.json').exists(), 'missing R backend must not certify an unchanged build'
                 assert 'Unknown command line argument' in record['error'],record['error']
                 print(f'LLVM {m}: real plugin lacks R mode: {record["error"][:300]}')
                 continue
@@ -41,8 +43,8 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='rung3-') as temp:
         p=subprocess.run([sys.argv[1],*flags(m),'--bennett-tier=reversible','--bennett-entry=main',
             '-bennett-dialect=0.2.10',f'--bennett-llvm-major={m}',f'-bennett-out={hello}',
             '--bennett-analysis-budget-ms=300000','-bennett-budget-default=10000000,1048576,65536,256,65536',
-            f'--bennett-sysroot={ws}/bennett-runtimes/dist/llvm{m}/musl-sysroot',
-            str(ws/'bennett-conformance/ladder/rung-3/fixtures/hello.c')],capture_output=True)
+            f'--bennett-sysroot={sibling("bennett-runtimes")}/dist/llvm{m}/musl-sysroot',
+            str(sibling('bennett-conformance')/'ladder/rung-3/fixtures/hello.c')],capture_output=True)
         assert p.returncode, 'R acceptance changed: audit the new native/executor outcomes'
         report=json.loads((hello/'blockers.json').read_text())
         if m==18:

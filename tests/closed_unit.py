@@ -1,11 +1,12 @@
 """The published function-pointer case must fall back without rejection."""
 import hashlib, os, pathlib, subprocess, sys, tempfile
-from toolchain import flags, target_headers
+from toolchain import flags, target_headers, configure, sibling
 root = pathlib.Path(__file__).resolve().parents[1]
-plugin_root = pathlib.Path(os.environ.get('BENNETT_DRIVER_MODERN_PLUGIN_ROOT') or root.parent/'bennett-plugin')
+plugin_root = sibling('bennett-plugin-native-comparison')
 with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='closed-unit-') as temp:
     d = pathlib.Path(temp)
     for major in (18, 23):
+        configure(major)
         source = d/f'callback-{major}.ll'
         plugin = plugin_root/f'build/libbennett-plugin-{major}.so'
         plugin_flags = [f'--bennett-plugin={plugin}', '--bennett-plugin-sha256='+hashlib.sha256(plugin.read_bytes()).hexdigest()]

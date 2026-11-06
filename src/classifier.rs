@@ -2,8 +2,11 @@
 use super::*;
 
 pub fn build(o: &Options, b: &mut Build, major: u32, arith: &Path) -> Result<()> {
-    let ws = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let publication = ws.join(format!("bennett-runtimes/dist/llvm{major}"));
+    let runtime = configured_path(o, "bennett-runtimes")?;
+    let publication = runtime
+        .parent()
+        .ok_or("BD-E-CONFIG: runtime has no publication directory")?;
+    let sysroot = configured_path(o, "bennett-sysroot")?;
     let mut sources = match o.get("bennett-classifier-input") {
         Some(p) => vec![absolute(p)?],
         None => o.inputs.iter().map(absolute).collect::<Result<Vec<_>>>()?,
@@ -53,10 +56,7 @@ pub fn build(o: &Options, b: &mut Build, major: u32, arith: &Path) -> Result<()>
                 "-fno-pie".into(),
                 "-nostdinc".into(),
                 "-isystem".into(),
-                publication
-                    .join("musl-sysroot/include")
-                    .display()
-                    .to_string(),
+                sysroot.join("include").display().to_string(),
                 "-fsanitize=undefined".into(),
                 "-fsanitize-minimal-runtime".into(),
                 "-fno-sanitize-recover=all".into(),

@@ -1,8 +1,8 @@
 """Driver transforms take effect before LTO and retain original source bytes."""
 import hashlib, json, os, pathlib, subprocess, sys, tempfile
-from toolchain import flags, target_headers
+from toolchain import flags, target_headers, configure, sibling
 root=pathlib.Path(__file__).resolve().parents[1]
-plugin_root=pathlib.Path(os.environ.get('BENNETT_DRIVER_MODERN_PLUGIN_ROOT') or root.parent/'bennett-plugin')
+plugin_root=sibling('bennett-plugin-native-comparison')
 def run(args):
     p=subprocess.run(list(map(str,args)),capture_output=True,timeout=120)
     assert p.returncode==0,p.stderr.decode()
@@ -10,6 +10,7 @@ def run(args):
 with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='preparation-') as temp:
     d=pathlib.Path(temp)
     for m in (18,23):
+        configure(m)
         plugin=plugin_root/f'build/libbennett-plugin-{m}.so'
         base=[sys.argv[1],*flags(m,plugin=False),f'--bennett-plugin={plugin}',
               '--bennett-plugin-sha256='+hashlib.sha256(plugin.read_bytes()).hexdigest(),

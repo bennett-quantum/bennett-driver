@@ -1,4 +1,5 @@
 """Source classifiers are distinct from the optimised materialised comparison."""
+from toolchain import configure, sibling
 import hashlib, json, pathlib, subprocess, sys, tempfile
 
 root = pathlib.Path(__file__).resolve().parents[1]
@@ -10,6 +11,7 @@ def run(args):
 with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='classifier-') as temp:
     d = pathlib.Path(temp)
     for major in (18, 23):
+        configure(major)
         llvm = pathlib.Path(f'/usr/lib/llvm-{major}/bin')
         source = d/f'original-{major}.c'
         # This source deliberately differs from the already-materialised input.

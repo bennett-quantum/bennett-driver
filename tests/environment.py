@@ -1,6 +1,6 @@
 """Every external child retains the caller's task TMPDIR and stays headless."""
 import os, pathlib, subprocess, sys, tempfile
-from toolchain import flags
+from toolchain import flags, configure, sibling
 root = pathlib.Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='environment-') as temp:
     d = pathlib.Path(temp)

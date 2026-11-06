@@ -1,13 +1,33 @@
-"""Optional explicit immutable artifacts for tests during sibling rebuilds."""
-import json, os, pathlib
+"""Driver test inputs come from verified gate.toml checkouts."""
+import hashlib, os, pathlib, sys
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'scripts'))
+from pinned_siblings import sibling
+
+
+def configure(major):
+    runtime = sibling('bennett-runtimes')
+    arith = sibling('bennett-arith')
+    paths = {
+        'runtimes': runtime / f'dist/llvm{major}/bennett-runtimes.bc',
+        'arith': arith / f'dist/llvm{major}/bennett-arith.bc',
+        'plugin': sibling('bennett-plugin') / f'build/libbennett-plugin-{major}.so',
+        'native-check': runtime / 'scripts/native-check',
+        'native-support': runtime / f'dist/llvm{major}/musl-sysroot/lib/native-support.bc',
+        'sysroot': runtime / f'dist/llvm{major}/musl-sysroot',
+        'arith-generator': arith / 'softfloat/instantiate.py',
+    }
+    for key, path in paths.items():
+        os.environ['BENNETT_DRIVER_' + key.upper().replace('-', '_')] = str(path)
+    return paths
+
+
 def flags(major, plugin=True):
-    directory=os.environ.get('BENNETT_DRIVER_TEST_ARTIFACTS')
-    if not directory: return []
-    pin=json.loads((pathlib.Path(directory)/'manifest.json').read_text())[str(major)]
+    paths = configure(major)
     result=[]
-    if plugin: result += ['--bennett-plugin='+pin['path'], '--bennett-plugin-sha256='+pin['sha256']]
-    for key in ('runtimes','arith'):
-        result += [f'--bennett-{key}='+pin[key]['path'],f'--bennett-{key}-sha256='+pin[key]['sha256']]
+    for key in (('plugin',) if plugin else ()) + ('runtimes', 'arith'):
+        path = paths[key]
+        result += [f'--bennett-{key}={path}',
+                   f'--bennett-{key}-sha256=' + hashlib.sha256(path.read_bytes()).hexdigest()]
     return result
 
 def target_headers(major):

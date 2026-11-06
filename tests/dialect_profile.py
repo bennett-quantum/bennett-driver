@@ -1,17 +1,18 @@
 """Explicit new contract negotiation never changes an old caller's profile."""
 import hashlib, json, os, pathlib, subprocess, sys, tempfile
-from toolchain import target_headers
+from toolchain import target_headers, configure, sibling
 root = pathlib.Path(__file__).resolve().parents[1]
-plugin_root = pathlib.Path(os.environ.get('BENNETT_DRIVER_MODERN_PLUGIN_ROOT') or root.parent/'bennett-plugin')
+plugin_root = sibling('bennett-plugin-native-comparison')
 def sha(p):
     return hashlib.sha256(p.read_bytes()).hexdigest()
 with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='dialect-profile-') as temp:
     d = pathlib.Path(temp)
     for major in (18, 23):
+        configure(major)
         plugin = plugin_root/f'build/libbennett-plugin-{major}.so'
         libraries = [f'--bennett-plugin={plugin}', f'--bennett-plugin-sha256={sha(plugin)}']
         for lib in ('runtimes', 'arith'):
-            p = root.parent/f'bennett-{lib}/dist/llvm{major}/bennett-{lib}.bc'
+            p = sibling(f'bennett-{lib}')/f'dist/llvm{major}/bennett-{lib}.bc'
             libraries += [f'--bennett-{lib}={p}', f'--bennett-{lib}-sha256={sha(p)}']
         source = d/f'marked-{major}.ll'
         source.write_text(target_headers(major)+'''declare ptr @__bennett_qalloc(i64, i64)

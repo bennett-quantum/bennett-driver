@@ -6,12 +6,22 @@ timeout_s = 7200
 
 [env]
 CARGO_TARGET_DIR = "{root}/.tmp/gate-target"
-BENNETT_DRIVER_NATIVE_PLUGIN_ROOT = "{sibling:bennett-plugin-native-comparison}"
-BENNETT_DRIVER_MODERN_PLUGIN_ROOT = "{sibling:bennett-plugin-native-comparison}"
 
 [[check]]
 name = "cargo test"
-argv = ["cargo", "test", "--offline", "-j4", "--", "--nocapture", "--test-threads=4"]
+argv = ["cargo", "test", "--offline", "-j3", "--", "--nocapture", "--test-threads=4"]
+
+[[report]]
+name = "promised configured classes (bennett-driver-9zg; expected red)"
+argv = ["cargo", "test", "--offline", "-j3", "--test", "classes", "--", "--ignored", "--nocapture", "--test-threads=4"]
+
+[[report]]
+name = "promised device models (bennett-driver-7y4; expected red)"
+argv = ["cargo", "test", "--offline", "-j3", "--test", "device_models", "--", "--ignored", "--nocapture", "--test-threads=4"]
+
+[[report]]
+name = "blocked rung-2 evidence (bennett-driver-ppz)"
+argv = ["cargo", "test", "--offline", "-j3", "--test", "pipeline", "--", "--ignored", "--nocapture", "--test-threads=4"]
 
 [siblings."bennett-conformance"]
 sha = "b077ae2a22e73b2321dcfe2fccede885f47b8d89"
@@ -51,11 +61,26 @@ outputs = ["build/libbennett-plugin-18.so", "build/libbennett-plugin-23.so"]
 # The frozen rung-2 producer stays separate from the native adapter publication.
 [siblings."bennett-plugin-native-comparison"]
 repo = "bennett-plugin"
-sha = "0ac61808d6cb24406489c95824220170875b93a5"
-note = "published selected-entry native prepare/check/finalise adapter"
+sha = "5a092cded3ba3351ba8cc2977a7eaf3b40f46526"
+note = "dialect 0.2.13 plugin for explicit modern-profile and selected-entry adapter tests; bennett-driver-193/0ai"
 
 [[siblings."bennett-plugin-native-comparison".build]]
 name = "native comparison adapter (LLVM 18 and 23)"
 argv = ["python3", "scripts/build"]
 outputs = ["build/libbennett-plugin-18.so", "build/libbennett-plugin-23.so"]
 needs = ["bennett-runtimes", "bennett-arith"]
+
+[siblings."bennett-dialect-spec"]
+sha = "de5f939bc070357f224bb3e6f1d61e8ea7784acd"
+note = "published device descriptor C declarations for the promised device-model test"
+
+[siblings."bennett-isa-spec-review"]
+repo = "bennett-isa-spec"
+sha = "8d9a5c60aff9aa35b44eb3ac1c541c020f24d737"
+note = "reference interpreter oracle for the promised device-model test"
+
+[[siblings."bennett-isa-spec-review".build]]
+name = "reference interpreter"
+cwd = "reference-interpreter"
+argv = ["cargo", "build", "--offline", "--release", "-j3"]
+outputs = ["reference-interpreter/target/release/bennett-isa-ref"]

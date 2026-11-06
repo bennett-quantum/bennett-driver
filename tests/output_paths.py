@@ -1,6 +1,6 @@
 """Comparison destinations cannot overwrite inputs or one another."""
 import hashlib,json,pathlib,subprocess,sys,tempfile
-from toolchain import flags, target_headers
+from toolchain import flags, target_headers, configure, sibling
 root=pathlib.Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='output-paths-') as temp:
  d=pathlib.Path(temp)
@@ -21,6 +21,7 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='output-paths-') as temp
   ('record-manifest',['--bennett-comparison-record={out}/manifest.json']),
   ('exe-link-input',['--bennett-comparison-output={out}/comparison.bc'])]
  for major in (18,23):
+  configure(major)
   for name,extra in cases:
    out=d/f'{major}-{name}'
    extra=[arg.format(out=out) for arg in extra]

@@ -1,6 +1,6 @@
 """Unmarked modules retain the ordinary native process and libc."""
 import hashlib, json, pathlib, subprocess, sys, tempfile
-from toolchain import flags, target_headers
+from toolchain import flags, target_headers, configure, sibling
 
 root = pathlib.Path(__file__).resolve().parents[1]
 def run(argv, **kwargs):
@@ -22,6 +22,7 @@ int main(int argc, char **argv) {
     helper.write_text('int helper(int n) { return n + 40; }\n')
     original = {str(p): sha(p) for p in (main, helper)}
     for major in (18, 23):
+        configure(major)
         out = d/f'host-{major}'
         args = [sys.argv[1], *flags(major), f'--bennett-llvm-major={major}',
                 '-bennett-dialect=0.2.10', f'--bennett-out={out}']
