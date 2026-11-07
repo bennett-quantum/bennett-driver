@@ -79,6 +79,38 @@ class QualityRatchet(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('process_identifiers', result.stderr)
 
+    def test_inline_production_body_identifiers_are_checked(self):
+        self.source.write_text('fn work() { println!("ordinary output"); }\n')
+        self.assertEqual(self.run_check('--record').returncode, 0)
+        self.source.write_text('fn work() { println!("'+'bennett-'+'driver-abc'+'"); }\n')
+        result = self.run_check()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('process_identifiers', result.stderr)
+
+    def test_named_promised_switch_stays_exempt(self):
+        self.source.write_text('#[test]\n#[ignore = "promised: '+'bennett-'+'driver-abc'+'"]\n'
+                               'fn promised_capability() { perform(); }\n')
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_named_switch_does_not_hide_inline_body(self):
+        self.source.write_text('#[test]\n#[ignore = "promised: '+'bennett-'+'driver-abc'+'"] '
+                               'fn promised_capability() { println!("'+'bennett-'+'driver-def'+'"); }\n')
+        result = self.run_check()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('process_identifiers', result.stderr)
+        self.assertIn('bennett-'+'driver-def', result.stderr)
+
+    def test_python_test_name_does_not_hide_inline_body(self):
+        path = self.root/'src/work.py'
+        path.write_text('def test_work(): print("ordinary output")\n')
+        subprocess.run(['git', '-C', self.root, 'add', '--', 'src/work.py'], check=True)
+        self.assertEqual(self.run_check('--record').returncode, 0)
+        path.write_text('def test_work(): print("'+'bennett-'+'driver-abc'+'")\n')
+        result = self.run_check()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('process_identifiers', result.stderr)
+
     def test_extensionless_script_identifiers_are_checked(self):
         path = self.root/'scripts/tool'
         path.write_text('# '+ 'bennett-'+'driver-abc'+'\n')

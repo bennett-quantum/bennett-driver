@@ -17,6 +17,8 @@ MAX_WRAPPER_LINES = 6  # Conservative short single-expression forwarding heurist
 PROCESS = re.compile(r'\b(?:bennett-driver|brt|bp)-[a-z0-9]{3}(?:\.[0-9]+)?\b|'
                      r'\bbennett-(?=[a-z0-9]{3}\b)(?=[a-z0-9]*[0-9])[a-z0-9]{3}\b|'
                      r'\bjob/[a-z0-9-]+|\bshift[ -][0-9]+', re.I)
+# Mask only a named Rust switch attribute, never code following it on the line.
+PROMISED_SWITCH = re.compile(r'^\s*#\[ignore\s*=\s*"(?:\\.|[^"\\])*"\s*\]')
 LITTER = ('*.pyc', '*.log', '*.darc', '*LAST-RUN*', '*PROGRESS*', '*/LOCK', '*.lock')
 STRINGS = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])\'', re.S)
 CONTROL = re.compile(r'\b(?:if|else|for|while|match|catch)\b|&&|\|\||[{}?]')
@@ -96,9 +98,9 @@ def measure():
             continue
         source = path.read_bytes().decode('utf-8', errors='replace')
         for number, line in enumerate(source.splitlines(), 1):
-            # Test names and named promised switches are explicitly allowed.
-            if re.match(r'\s*(?:fn |def test_|#\[ignore)', line):
-                continue
+            # Valid function identifiers need no exemption; scan their bodies too.
+            if path.suffix == '.rs':
+                line = PROMISED_SWITCH.sub('', line)
             for match in PROCESS.finditer(line):
                 metrics['process_identifiers'].append(f'{name}:{number}:{match[0]}')
         if path.suffix in ('.rs', '.cpp', '.c', '.h', '.py'):
