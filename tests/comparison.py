@@ -22,6 +22,18 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='comparison-') as tmp:
         run(args)
         records=json.loads((out/'native-comparisons.json').read_text())
         assert [r['status'] for r in records]==['linked','linked','blocked'],records
+        # The standalone receipt must identify the actual static-link closure,
+        # including generated configuration and the exact checked bitcode.
+        for record in records[:2]:
+            inputs=record['inputs']
+            assert {'materialised','runtimes','arith','base_arith','native_support',
+                    'native_check','checked','comparison','layout','layout_bitcode',
+                    'linker_script','codegen_object','comparison_layout'} <= inputs.keys(), inputs
+            for value in inputs.values():
+                assert hashlib.sha256(pathlib.Path(value['path']).read_bytes()).hexdigest()==value['sha256'], value
+            assert pathlib.Path(inputs['materialised']['path'])==d/'device.bc'
+            assert inputs['codegen_object']==record['codegen_object']
+            assert inputs['checked']['sha256']==hashlib.sha256((out/'comparison-checked.bc').read_bytes()).hexdigest()
         assert records[2]['blocked_on']==['freestanding-asan-runtime']
         table=(out/'native-layout.ll').read_text()
         assert '@__bennett_rt_native_layout = constant { i64, i64, i64 } { i64 1, i64 69632, i64 1048576 }, align 8' in table

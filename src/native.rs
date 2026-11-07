@@ -496,6 +496,64 @@ impl Comparison {
             .collect();
         Ok(NativeProgram { closed, residual })
     }
+    fn link_inputs(
+        &self,
+        o: &Options,
+        b: &Build,
+        checked: &CheckedComparison,
+        program: &NativeProgram,
+        codegen: &Path,
+    ) -> Result<Json> {
+        let mut inputs = BTreeMap::from([
+            ("materialised", self.device.clone()),
+            ("runtimes", self.runtime.clone()),
+            ("base_arith", self.arith.clone()),
+            ("arith", checked.arith.clone()),
+            ("native_check", self.adapter.clone()),
+            ("native_support", self.support.clone()),
+            ("linked", b.out.join("comparison-linked.bc")),
+            ("check_input", b.out.join("comparison-check-input.bc")),
+            ("checked", checked.checked.clone()),
+            ("adapted", b.out.join("comparison-adapted.bc")),
+            ("comparison", program.closed.clone()),
+            ("layout", b.out.join("resolved-layout.json")),
+            ("layout_ir", b.out.join("native-layout.ll")),
+            ("layout_bitcode", b.out.join("native-layout.bc")),
+            ("linker_script", b.out.join("comparison.ld")),
+            ("codegen_object", codegen.to_path_buf()),
+        ]);
+        for (key, role, compiled_role) in [
+            (OptionKey::NativeInput, "harness", "harness_bitcode"),
+            (OptionKey::NativeBackend, "backend", "backend_bitcode"),
+        ] {
+            if let Some(path) = o.get(key) {
+                inputs.insert(role, absolute(path)?);
+                inputs.insert(compiled_role, b.out.join(format!("{key}.bc")));
+            }
+        }
+        if let Some(path) = o.get(OptionKey::ComparisonLayout) {
+            inputs.insert("comparison_layout", absolute(path)?);
+        }
+        if let Some(adapter) = &self.materialisation {
+            inputs.extend([
+                ("plugin", adapter.plugin.clone()),
+                ("launch_record", adapter.receipt.clone()),
+                ("prepared", b.out.join("native-prepared.bc")),
+                ("finalised", b.out.join("native-finalised.bc")),
+                ("host_imports", b.out.join("native-host.bc")),
+                ("preparation_report", b.out.join("native-preparation.json")),
+                (
+                    "materialisation_report",
+                    b.out.join("native-materialisation.json"),
+                ),
+            ]);
+        }
+        let artifacts = inputs
+            .into_iter()
+            .map(|(role, path)| Ok((role, artifact(&path, None)?)))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(obj(artifacts))
+    }
     fn link_variants(
         &self,
         o: &Options,
@@ -588,6 +646,10 @@ impl Comparison {
                 ("bitcode_link_argv", strings(bitcode_link)),
                 ("linked_sha256", sha(closed)?.into()),
                 ("codegen_object", artifact(&code_input, None)?),
+                (
+                    "inputs",
+                    self.link_inputs(o, b, checked, program, &code_input)?,
+                ),
                 ("runtimes_sha256", sha(runtime)?.into()),
                 ("arith_sha256", sha(arith)?.into()),
                 ("base_arith_sha256", base_arith_sha.clone().into()),
