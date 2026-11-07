@@ -31,6 +31,10 @@ argv = ["cargo", "test", "--offline", "-j3", "--test", "device_models", "--", "-
 name = "blocked rung-2 evidence (bennett-driver-ppz)"
 argv = ["cargo", "test", "--offline", "-j3", "--test", "pipeline", "--", "--ignored", "--nocapture", "--test-threads=4"]
 
+[[report]]
+name = "prepared formatted integer printf (bennett-driver-972; expected red)"
+argv = ["cargo", "test", "--offline", "-j3", "--test", "native_scalar", "scalar_printf_process_preparation_uses_the_real_static_native_closure", "--", "--ignored", "--nocapture", "--test-threads=4"]
+
 [siblings."bennett-conformance"]
 sha = "b077ae2a22e73b2321dcfe2fccede885f47b8d89"
 note = "conformance origin/main (ladder rung-2 and rung-3 fixtures)"

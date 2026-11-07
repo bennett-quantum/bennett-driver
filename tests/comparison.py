@@ -6,6 +6,17 @@ def run(args):
     p=subprocess.run(list(map(str,args)),capture_output=True)
     assert p.returncode==0,p.stderr.decode()
     return p.stdout
+# The standalone receipt identifies every input in the actual static-link closure.
+REQUIRED_INPUTS = {'materialised','runtimes','arith','base_arith','native_support',
+                   'native_check','checked','comparison','layout','layout_bitcode',
+                   'linker_script','codegen_object','comparison_layout'}
+def audit_input_inventory(records):
+    assert all(REQUIRED_INPUTS <= r['inputs'].keys() for r in records), records
+    assert all(hashlib.sha256(pathlib.Path(v['path']).read_bytes()).hexdigest()==v['sha256'] for r in records for v in r['inputs'].values()), records
+def audit_input_provenance(records, d, out):
+    assert all(pathlib.Path(r['inputs']['materialised']['path'])==d/'device.bc' for r in records), records
+    assert all(r['inputs']['codegen_object']==r['codegen_object'] for r in records), records
+    assert all(r['inputs']['checked']['sha256']==hashlib.sha256((out/'comparison-checked.bc').read_bytes()).hexdigest() for r in records), records
 with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='comparison-') as tmp:
     for m in (18,23):
         configure(m)
@@ -22,6 +33,8 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='comparison-') as tmp:
         run(args)
         records=json.loads((out/'native-comparisons.json').read_text())
         assert [r['status'] for r in records]==['linked','linked','blocked'],records
+        audit_input_inventory(records[:2])
+        audit_input_provenance(records[:2], d, out)
         assert records[2]['blocked_on']==['freestanding-asan-runtime']
         table=(out/'native-layout.ll').read_text()
         assert '@__bennett_rt_native_layout = constant { i64, i64, i64 } { i64 1, i64 69632, i64 1048576 }, align 8' in table

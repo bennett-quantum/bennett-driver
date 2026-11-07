@@ -705,6 +705,32 @@ bennett-driver-9zg/7y4/ppz remain open. No full push gate was run.
       "max_length": 20,
       "wrappers": 0
     },
+    "tests/fixtures/r3-hello.c": {
+      "complexity": 0,
+      "functions": 1,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 4,
+      "wrappers": 0
+    },
+    "tests/fixtures/r3-integer-printf.c": {
+      "complexity": 0,
+      "functions": 1,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 5,
+      "wrappers": 0
+    },
     "tests/hook.py": {
       "complexity": 4,
       "functions": 0,
@@ -837,6 +863,45 @@ bennett-driver-9zg/7y4/ppz remain open. No full push gate was run.
     },
     "tests/native_memory.py": {
       "complexity": 26,
+      "functions": 3,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 4,
+      "wrappers": 2
+    },
+    "tests/native_scalar.py": {
+      "complexity": 14,
+      "functions": 2,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 4,
+      "wrappers": 1
+    },
+    "tests/native_scalar.rs": {
+      "complexity": 0,
+      "functions": 2,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 3,
+      "wrappers": 2
+    },
+    "tests/native_scalar_binding.py": {
+      "complexity": 6,
       "functions": 3,
       "length_tails": [
         0,
