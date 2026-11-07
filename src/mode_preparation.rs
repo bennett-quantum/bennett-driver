@@ -16,12 +16,12 @@ pub fn prepare(
     let classes = o
         .plugin_args
         .iter()
-        .filter_map(|arg| arg.strip_prefix("-bennett-class="))
-        .map(str::to_string)
+        .filter(|arg| arg.key == OptionKey::Class)
+        .map(|arg| arg.value.clone())
         .collect::<Vec<_>>();
     if classes.is_empty()
-        && o.get("bennett-snapshot").is_none()
-        && (!include_vscale || o.get("bennett-vscale").is_none())
+        && o.get(OptionKey::Snapshot).is_none()
+        && (!include_vscale || o.get(OptionKey::Vscale).is_none())
     {
         return Ok(modules.to_vec());
     }
@@ -32,12 +32,15 @@ pub fn prepare(
         include_str!("mode-preparation.cpp"),
     )?;
     let mut request = obj([("classes", strings(&classes))]);
-    for key in ["snapshot", "vscale"] {
-        if key == "vscale" && !include_vscale {
+    for (name, key) in [
+        ("snapshot", OptionKey::Snapshot),
+        ("vscale", OptionKey::Vscale),
+    ] {
+        if key == OptionKey::Vscale && !include_vscale {
             continue;
         }
-        if let Some(value) = o.get(&format!("bennett-{key}")) {
-            request.set(key, value.into());
+        if let Some(value) = o.get(key) {
+            request.set(name, value.into());
         }
     }
     let prefix = if include_vscale {

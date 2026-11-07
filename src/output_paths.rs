@@ -25,6 +25,28 @@ pub fn recorded_artifacts(value: &Json, paths: &mut Vec<PathBuf>) {
     }
 }
 
+/// Protect the complete prior-stage inventory, including entry evidence that
+/// is not represented by a path/hash pair in the driver manifest.
+pub fn published_artifacts(directory: &Path, paths: &mut Vec<PathBuf>) -> Result<()> {
+    let inventory_error = |error| {
+        format!(
+            "BD-E-OUTPUT-PATH: cannot inventory {}: {error}",
+            directory.display()
+        )
+    };
+    let entries = fs::read_dir(directory)
+        .and_then(|entries| entries.collect::<std::io::Result<Vec<_>>>())
+        .map_err(inventory_error)?;
+    for entry in entries {
+        let path = entry.path();
+        if entry.file_type().map_err(inventory_error)?.is_dir() {
+            published_artifacts(&path, paths)?;
+        }
+        paths.push(path);
+    }
+    Ok(())
+}
+
 fn resolved(path: &Path) -> Result<PathBuf> {
     match fs::canonicalize(path) {
         Ok(path) => Ok(path),
@@ -55,19 +77,15 @@ pub fn admit(inputs: &[PathBuf], outputs: &[(&str, PathBuf)]) -> Result<()> {
         })
     };
     for (index, (role, path)) in outputs.iter().enumerate() {
-        for input in inputs {
-            if aliases(path, input)? {
-                return Err(format!(
-                    "BD-E-OUTPUT-PATH: {role} destination {} aliases input {}",
-                    path.display(),
-                    input.display()
-                ));
-            }
-        }
-        for (other_role, other) in &outputs[..index] {
+        let protected = inputs.iter().map(|input| ("input".into(), input)).chain(
+            outputs[..index]
+                .iter()
+                .map(|(role, path)| (format!("{role} destination"), path)),
+        );
+        for (other_role, other) in protected {
             if aliases(path, other)? {
                 return Err(format!(
-                    "BD-E-OUTPUT-PATH: {role} destination {} aliases {other_role} destination {}",
+                    "BD-E-OUTPUT-PATH: {role} destination {} aliases {other_role} {}",
                     path.display(),
                     other.display()
                 ));

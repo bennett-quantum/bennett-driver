@@ -3,6 +3,7 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 #[test]
+#[ignore = "blocked publication: bennett-driver-ppz; run --test pipeline -- --ignored"]
 fn hashtable_pipeline_matches_recorded_objects() {
     let result = Command::new("python3")
         .arg(root().join("tests/integration.py"))
@@ -48,6 +49,9 @@ fn missing_published_fixture_names_its_dependency() {
     assert!(!result.status.success());
     let error = String::from_utf8_lossy(&result.stderr);
     assert!(error.contains("BD-E-TEST-FIXTURE"), "{error}");
-    assert!(error.contains("bennett-driver-3j4"), "{error}");
+    assert!(
+        error.contains("conformance must publish the tracked driver-regression fixture"),
+        "{error}"
+    );
     assert!(error.contains("no live sibling .tmp fallback"), "{error}");
 }

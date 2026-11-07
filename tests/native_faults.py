@@ -1,4 +1,5 @@
 """Check actual materialised fault outcomes, independently of source UBSan."""
+from toolchain import configure, sibling
 import hashlib, json, pathlib, subprocess, sys, tempfile
 
 root = pathlib.Path(__file__).resolve().parents[1]
@@ -8,6 +9,7 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='native-faults-') as te
     layout.write_text(json.dumps(dict(null_size=4096, ptr_width=64, heap_base=69632,
         heap_limit_max=1048576, globals={}, interface_regions={})))
     for major in (18, 23):
+        configure(major)
         # Constant operands ensure O2 cannot erase the fault into poison.
         # In particular srem(min,-1) must fault even on x86 (native gives 0).
         cases = [(op+'-zero', f'%v = {op} i32 9, 0', 5)

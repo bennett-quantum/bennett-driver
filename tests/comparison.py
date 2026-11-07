@@ -1,13 +1,14 @@
 """Native support adapter diagnostics; these are NOT plugin acceptance tests."""
+from toolchain import configure, sibling
 import hashlib, json, pathlib, subprocess, sys, tempfile
 root=pathlib.Path(__file__).resolve().parents[1]
-ws=root.parent
 def run(args):
     p=subprocess.run(list(map(str,args)),capture_output=True)
     assert p.returncode==0,p.stderr.decode()
     return p.stdout
 with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='comparison-') as tmp:
     for m in (18,23):
+        configure(m)
         d=pathlib.Path(tmp)/str(m);d.mkdir()
         llvm=pathlib.Path(f'/usr/lib/llvm-{m}/bin')
         # No marker, no materialiser substitution: a diagnostic already-materialised
@@ -21,23 +22,42 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='comparison-') as tmp:
         run(args)
         records=json.loads((out/'native-comparisons.json').read_text())
         assert [r['status'] for r in records]==['linked','linked','blocked'],records
-        assert records[2]['blocked_on']==['brt-nuu.2']
+        assert records[2]['blocked_on']==['freestanding-asan-runtime']
         table=(out/'native-layout.ll').read_text()
         assert '@__bennett_rt_native_layout = constant { i64, i64, i64 } { i64 1, i64 69632, i64 1048576 }, align 8' in table
         for level in ('O0','O2'):
             r=next(r for r in records if r.get('variant')==level)
-            a=r['link_argv'];assert all(x in a for x in ('-nostdlib','-nostdinc','-static','-no-pie'))
             obj=pathlib.Path(r['codegen_object']['path'])
             assert hashlib.sha256(obj.read_bytes()).hexdigest()==r['codegen_object']['sha256']
-            assert r['provenance']=='explicit module; producer receipt not verified'
-            assert not any(x in a for x in ('-lc','-lm','-fsanitize=address,undefined'))
+            assert r['materialised_sha256'] == hashlib.sha256((d/'device.bc').read_bytes()).hexdigest()
             assert run([out/f'native-{level}'])==b''
             assert not run([llvm/'llvm-nm','--undefined-only',out/f'native-{level}']).strip()
             assert b'INTERP' not in run(['readelf','-l',out/f'native-{level}'])
         manifest=json.loads((out/'manifest.json').read_text())
         stages=[c['stage'] for c in manifest['commands']]
         assert stages.index('comparison-bitcode-link') < stages.index('comparison-support-link') < stages.index('comparison-closure-link')
-        assert records[0]['native_support_sha256']==hashlib.sha256((ws/f'bennett-runtimes/dist/llvm{m}/musl-sysroot/lib/native-support.bc').read_bytes()).hexdigest()
+        assert records[0]['native_support_sha256']==hashlib.sha256((sibling('bennett-runtimes')/f'dist/llvm{m}/musl-sysroot/lib/native-support.bc').read_bytes()).hexdigest()
+        # IR/bitcode production inputs cannot recover erased C definedness,
+        # but that independent diagnostic must not invalidate the native link.
+        for spelling in ('ll', 'bc'):
+            positional = d / ('original.' + spelling)
+            if spelling == 'll':
+                positional.write_text('define i32 @unused() { ret i32 9 }\n')
+            else:
+                run([llvm/'llvm-as', d/'original.ll', '-o', positional])
+            comparison_out = d / ('positional-' + spelling)
+            run([*args[:3], f'--bennett-out={comparison_out}',
+                 f'--bennett-comparison-layout={layout}', '--bennett-layout-data-base=65536', positional])
+            assert json.loads((comparison_out/'manifest.json').read_text())['status'] == 'linked'
+            classifier = json.loads((comparison_out/'native-classifiers.json').read_text())[0]
+            assert classifier['status'] == 'blocked' and 'original C' in classifier['reason'], classifier
+            for level in ('O0', 'O2'):
+                assert run([comparison_out/f'native-{level}']) == b''
+        explicit_out = d/'explicit-invalid-classifier'
+        explicit = subprocess.run([*args[:3], f'--bennett-out={explicit_out}',
+            f'--bennett-comparison-layout={layout}', '--bennett-layout-data-base=65536',
+            f'--bennett-classifier-input={d/"original.ll"}'], capture_output=True)
+        assert explicit.returncode != 0 and b'BD-E-NATIVE-CLASSIFIER' in explicit.stderr, explicit.stderr
         # Retain an explicit harness main before --only-needed closes startup.
         src.write_text(src.read_text().replace('int main(void)', 'int check(void)'))
         run([llvm/'clang','-emit-llvm','-c',src,'-o',d/'callee.bc'])

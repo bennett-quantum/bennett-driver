@@ -2,14 +2,17 @@
 use super::*;
 
 pub fn build(o: &Options, b: &mut Build, major: u32, arith: &Path) -> Result<()> {
-    let ws = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let publication = ws.join(format!("bennett-runtimes/dist/llvm{major}"));
-    let mut sources = match o.get("bennett-classifier-input") {
+    let runtime = configured_path(o, OptionKey::Runtimes)?;
+    let publication = runtime
+        .parent()
+        .ok_or("BD-E-CONFIG: runtime has no publication directory")?;
+    let sysroot = o.required_sysroot()?;
+    let mut sources = match o.get(OptionKey::ClassifierInput) {
         Some(p) => vec![absolute(p)?],
-        None => o.inputs.iter().map(absolute).collect::<Result<Vec<_>>>()?,
+        None => vec![],
     };
     if !sources.is_empty()
-        && let Some(p) = o.get("bennett-native-input")
+        && let Some(p) = o.get(OptionKey::NativeInput)
     {
         sources.push(absolute(p)?);
     }
@@ -51,12 +54,6 @@ pub fn build(o: &Options, b: &mut Build, major: u32, arith: &Path) -> Result<()>
                 "-ffreestanding".into(),
                 "-fno-builtin".into(),
                 "-fno-pie".into(),
-                "-nostdinc".into(),
-                "-isystem".into(),
-                publication
-                    .join("musl-sysroot/include")
-                    .display()
-                    .to_string(),
                 "-fsanitize=undefined".into(),
                 "-fsanitize-minimal-runtime".into(),
                 "-fno-sanitize-recover=all".into(),
@@ -66,7 +63,7 @@ pub fn build(o: &Options, b: &mut Build, major: u32, arith: &Path) -> Result<()>
                 "-o".into(),
                 module.display().to_string(),
             ];
-            args.extend(sysroot_flags(o)?);
+            args.extend(sysroot.frontend_flags());
             b.run("classifier-frontend", args, None)?;
             modules.push(module.display().to_string());
         }
@@ -91,7 +88,7 @@ pub fn build(o: &Options, b: &mut Build, major: u32, arith: &Path) -> Result<()>
             .trim()
             .parse::<u64>()
             .map_err(|e| format!("classifier heap budget: {e}"))?;
-        let data = o.get("bennett-layout-data-base").unwrap_or("4096");
+        let data = o.data_base.as_str();
         write(
             &layout_ir,
             format!(
@@ -199,14 +196,14 @@ pub fn build(o: &Options, b: &mut Build, major: u32, arith: &Path) -> Result<()>
         ("variant", "O0-ASan-original-input".into()),
         ("subject", "original-input".into()),
         ("status", "blocked".into()),
-        ("blocked_on", strings(&["brt-nuu.2".into()])),
+        ("blocked_on", strings(&["freestanding-asan-runtime".into()])),
         ("reason", "Full freestanding ASan is not published; UBSan does not detect general memory faults or use after free".into()),
     ])]);
     write(b.out.join("native-classifiers.json"), rows.encode() + "\n")?;
     b.record.set("source_classifiers", rows);
     // An adapter without original inputs is still useful as link evidence.
     // An explicitly requested classifier must fail loudly if it cannot build.
-    if !sources.is_empty() {
+    if o.get(OptionKey::ClassifierInput).is_some() {
         result.map_err(|e| format!("BD-E-NATIVE-CLASSIFIER: {e}"))?;
     }
     Ok(())

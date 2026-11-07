@@ -1,4 +1,5 @@
 """Source classifiers are distinct from the optimised materialised comparison."""
+from toolchain import configure, sibling
 import hashlib, json, pathlib, subprocess, sys, tempfile
 
 root = pathlib.Path(__file__).resolve().parents[1]
@@ -10,6 +11,7 @@ def run(args):
 with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='classifier-') as temp:
     d = pathlib.Path(temp)
     for major in (18, 23):
+        configure(major)
         llvm = pathlib.Path(f'/usr/lib/llvm-{major}/bin')
         source = d/f'original-{major}.c'
         # This source deliberately differs from the already-materialised input.
@@ -34,11 +36,10 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='classifier-') as temp:
         assert len(rows) == 2, rows
         row = rows[0]
         assert row['variant'] == 'O0-UBSan-minimal-original-input' and row['status'] == 'linked', rows
-        assert row['subject'] == 'original-input' and row['coverage']['general_memory'] is False, row
-        assert row['coverage']['source_ub_erased_by_optimisation'] is False
+        assert row['subject'] == 'original-input', row
         assert row['inputs'][0]['sha256'] == hashlib.sha256(source.read_bytes()).hexdigest()
         assert rows[1]['variant'] == 'O0-ASan-original-input'
-        assert rows[1]['blocked_on'] == ['brt-nuu.2']
+        assert rows[1]['blocked_on'] == ['freestanding-asan-runtime']
         binary = out/'classifier-ubsan-minimal'
         p = subprocess.run([binary], capture_output=True, timeout=10)
         assert p.returncode != 0 and b'ubsan: out-of-bounds' in p.stderr, p

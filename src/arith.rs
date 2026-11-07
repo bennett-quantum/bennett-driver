@@ -30,19 +30,10 @@ pub fn prepare(
     if needed.trim() != "required" {
         return Err("BD-E-ARITH-INSTANCES: collector returned no verdict".into());
     }
-    let generator = absolute(
-        o.get("bennett-arith-generator")
-            .map(PathBuf::from)
-            .unwrap_or(
-                Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .parent()
-                    .unwrap()
-                    .join("bennett-arith/softfloat/instantiate.py"),
-            ),
-    )?;
+    let generator = configured_path(o, OptionKey::ArithGenerator)?;
     b.record.set(
         "arith_generator",
-        artifact(&generator, o.get("bennett-arith-generator-sha256"))?,
+        artifact(&generator, o.get(OptionKey::ArithGeneratorSha256))?,
     );
     let request = b.out.join("arith-request.json");
     b.record.set("arith_request", artifact(&request, None)?);

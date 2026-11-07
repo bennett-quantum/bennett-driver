@@ -1,4 +1,5 @@
 """Independent materialised-memory cases through the driver's actual links."""
+from toolchain import configure, sibling
 import hashlib, json, pathlib, resource, subprocess, sys, tempfile
 
 root = pathlib.Path(__file__).resolve().parents[1]
@@ -37,6 +38,7 @@ cases = [
 with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='native-memory-') as temp:
     d = pathlib.Path(temp)
     for major in (18,23):
+        configure(major)
         ir = d/f'device-{major}.ll'
         text = '''target triple = "x86_64-unknown-linux-gnu"
 @bytes = global [8 x i8] zeroinitializer, align 8
@@ -80,7 +82,7 @@ define i32 @main(i32 %argc, ptr %argv) {
         receipt = json.loads((out/'manifest.json').read_text())
         stages = [c['stage'] for c in receipt['commands']]
         assert stages.index('comparison-checks') < stages.index('comparison-support-link')
-        assert receipt['native_check_adapter']['sha256'] == sha(root.parent/'bennett-runtimes/scripts/native-check')
+        assert receipt['native_check_adapter']['sha256'] == sha(sibling('bennett-runtimes')/'scripts/native-check')
         assert receipt['checked_materialised']['sha256'] == sha(out/'comparison-checked.bc')
         # Host setup failures must not be mistaken for a dialect fault.
         def constrained(): resource.setrlimit(resource.RLIMIT_AS,(8*1024*1024,8*1024*1024))

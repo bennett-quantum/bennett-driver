@@ -1,10 +1,11 @@
 """Published controls reach their backend, with real closed-unit processing."""
 import json, pathlib, subprocess, sys, tempfile
-from toolchain import flags, target_headers
+from toolchain import flags, target_headers, configure, sibling
 root = pathlib.Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(dir=root/'.tmp', prefix='modes-') as temp:
     d = pathlib.Path(temp)
     for major in (18, 23):
+        configure(major)
         source = d/f'marked-{major}.ll'
         source.write_text(target_headers(major)+'''declare ptr @__bennett_qalloc(i64, i64)
 declare void @__bennett_qfree(ptr)

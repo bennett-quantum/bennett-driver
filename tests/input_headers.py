@@ -1,6 +1,6 @@
 """Every production IR input must declare its own target before linking."""
 import pathlib,subprocess,sys,tempfile
-from toolchain import flags, target_headers
+from toolchain import flags, target_headers, configure, sibling
 root=pathlib.Path(__file__).resolve().parents[1]
 body='''declare ptr @__bennett_qalloc(i64, i64)
 declare void @__bennett_qfree(ptr)
@@ -13,6 +13,7 @@ define i32 @top() {
 with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='input-headers-') as temp:
  d=pathlib.Path(temp)
  for major in (18,23):
+  configure(major)
   headers=target_headers(major)
   complete=d/f'complete-{major}.ll';complete.write_text(headers+body)
   cases=[('both',('triple','datalayout')),('triple',('triple',)),('layout',('datalayout',)),
