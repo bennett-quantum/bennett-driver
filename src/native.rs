@@ -96,6 +96,9 @@ impl Comparison {
         let materialisation = native_adapter::Adapter::select(o, m, &device)?;
         let mut protected = vec![device.clone(), runtime.clone(), arith.clone()];
         output_paths::recorded_artifacts(&b.record, &mut protected);
+        output_paths::published_artifacts(&b.out, &mut protected)?;
+        // Build::save owns manifest refreshes; user destinations cannot claim it.
+        protected.push(b.out.join("manifest.json"));
         if let Some(adapter) = &materialisation {
             protected.extend([adapter.plugin.clone(), adapter.receipt.clone()]);
         }
@@ -121,7 +124,6 @@ impl Comparison {
             ("O0 executable", exe.with_file_name("native-O0")),
         ];
         for name in [
-            "manifest.json",
             "native-comparisons.json",
             "native-detection.json",
             "native-classifiers.json",
@@ -724,6 +726,52 @@ mod tests {
         );
         assert_eq!(sha(&fixture.options.inputs[0]).unwrap(), before);
         assert!(fixture.build.commands.is_empty());
+    }
+    #[test]
+    fn comparison_admission_preserves_every_published_artifact() {
+        let mut fixture = Fixture::new("published-artifacts");
+        materialised(&mut fixture);
+        fs::create_dir(fixture.build.out.join("top")).unwrap();
+        for name in [
+            "launches.json",
+            "build.json",
+            "build.sha256",
+            "top/launch.bennett",
+            "top/build.json",
+            "top/certificate.json",
+            "top/coverage.json",
+            "top/blockers.json",
+            "top/launch-record.json",
+            "top/argv-replies.json",
+            "top/future-evidence.bin",
+        ] {
+            let path = fixture.build.out.join(name);
+            let bytes = format!("published bytes for {name}\n");
+            write(&path, &bytes).unwrap();
+            let symlink = fixture.root.join("published-symlink");
+            let hardlink = fixture.root.join("published-hardlink");
+            std::os::unix::fs::symlink(&path, &symlink).unwrap();
+            fs::hard_link(&path, &hardlink).unwrap();
+            for destination in [&path, &symlink, &hardlink] {
+                for key in [OptionKey::ComparisonRecord, OptionKey::ComparisonOutput] {
+                    fixture
+                        .options
+                        .values
+                        .insert(key, destination.display().to_string());
+                    let result = Comparison::admit(&fixture.options, &mut fixture.build);
+                    assert!(
+                        matches!(result, Err(ref error) if error.starts_with("BD-E-OUTPUT-PATH")),
+                        "{key}: {} was not rejected",
+                        destination.display()
+                    );
+                    assert_eq!(fs::read(&path).unwrap(), bytes.as_bytes(), "{name}");
+                    assert!(fixture.build.commands.is_empty());
+                    fixture.options.values.remove(&key);
+                }
+            }
+            fs::remove_file(symlink).unwrap();
+            fs::remove_file(hardlink).unwrap();
+        }
     }
     #[test]
     fn checking_stage_refuses_malformed_materialised_bitcode() {

@@ -25,6 +25,29 @@ pub fn recorded_artifacts(value: &Json, paths: &mut Vec<PathBuf>) {
     }
 }
 
+/// Protect the complete prior-stage inventory, including entry evidence that
+/// is not represented by a path/hash pair in the driver manifest.
+pub fn published_artifacts(directory: &Path, paths: &mut Vec<PathBuf>) -> Result<()> {
+    let inventory_error = |error| {
+        format!(
+            "BD-E-OUTPUT-PATH: cannot inventory {}: {error}",
+            directory.display()
+        )
+    };
+    let entries = fs::read_dir(directory)
+        .map_err(inventory_error)?
+        .collect::<std::io::Result<Vec<_>>>()
+        .map_err(inventory_error)?;
+    for entry in entries {
+        let path = entry.path();
+        if entry.file_type().map_err(inventory_error)?.is_dir() {
+            published_artifacts(&path, paths)?;
+        }
+        paths.push(path);
+    }
+    Ok(())
+}
+
 fn resolved(path: &Path) -> Result<PathBuf> {
     match fs::canonicalize(path) {
         Ok(path) => Ok(path),
