@@ -104,6 +104,38 @@ path from escaping the gate. Byte decoding for the grep preserves all ASCII
 identifiers even in non-UTF-8 fixtures; language metrics still parse only the
 listed source languages.
 
+Final verification after typed forwarding and receipt/hygiene fixes:
+
+| Command | Result |
+|---|---|
+| `timeout 180 cargo test --offline -j3 -- --test-threads=4` | PASS, **109.15 s** wall time; 18 unit + 26 fixture + 2 pipeline tests, 5 explicitly named ignored tests. |
+| `timeout 240 cargo llvm-cov --offline -j3 --summary-only -- --test-threads=4` | PASS, **92.76% Rust lines** (2,510/2,706); subprocess profiles included. |
+| `timeout 360 cargo test --offline -j3 --test fixtures -- --ignored --nocapture --test-threads=4` | PASS, both arithmetic generator fixtures; test binary finished in 56.37 s. |
+| `python3 scripts/quality.py` | PASS; 60 tracked source files, 219 functions, longest 207 lines, 69 conservative wrapper matches, no litter/identifiers. |
+| `timeout 30 python3 tests/quality.py` | PASS, 9 independent metric/mutation tests. |
+| `cargo fmt --all --check` and `timeout 90 cargo clippy --offline -j3 --all-targets -- -D warnings` | PASS. |
+
+The final forwarding follow-up also passed the six-build byte-identity matrix
+(`timeout 180 python3 .tmp/quality-driver/forwarding_identity.py`): another 360
+emitted files matched across both LLVM majors and all three build routes.
+
+The final coverage run's five least-covered modules are llvm_utility (86.14%),
+options (86.23%), native_adapter (88.89%), report (90.32%), and output_paths
+(90.62%). The table above the refactor records the existing treatment for four;
+the new options module has direct typed-default, repetition/order, forwarding,
+unknown/duplicate and scope-validation tests plus CLI configuration matrices.
+Remaining uncovered option branches are malformed-input/control variations;
+opaque backend controls still depend on the named producer capabilities. The
+whole suite includes their positive preparation paths and explicit error paths.
+
+The final named promised/blocked report command
+`timeout 60 cargo test --offline -j3 --test classes --test device_models --test pipeline --no-fail-fast -- --ignored --nocapture --test-threads=4`
+returns 101 as expected: configured register classes, scalar descriptor finite
+dispatch, and the missing tracked conformance report remain red. No success
+assertion was removed or weakened. The plugin-native-comparison pin remains
+`5a092cded3ba3351ba8cc2977a7eaf3b40f46526`. Full push-gate and review orchestration
+remain the maintainer's merge step.
+
 <!-- quality-baseline -->
 ```json
 {
