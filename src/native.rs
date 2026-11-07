@@ -38,13 +38,15 @@ fn audit_markers(b: &mut Build, m: u32, p: &Path) -> Result<()> {
         ],
         None,
     )?;
-    for name in symbols.lines().filter_map(|l| l.split_whitespace().last()) {
-        if marker(name) {
-            return Err(format!(
-                "BD-E-MARKER-DEFINED: §19.9 comparison input {} supplies marker definition {name}",
-                p.display()
-            ));
-        }
+    if let Some(name) = symbols
+        .lines()
+        .filter_map(|l| l.split_whitespace().last())
+        .find(|name| marker(name))
+    {
+        return Err(format!(
+            "BD-E-MARKER-DEFINED: §19.9 comparison input {} supplies marker definition {name}",
+            p.display()
+        ));
     }
     Ok(())
 }
@@ -519,12 +521,7 @@ impl Comparison {
         let script = b.out.join("comparison.ld");
         let mut results = vec![];
         let mut first_error = None;
-        for level in ["O2", "O0"] {
-            let output = if level == "O2" {
-                exe.clone()
-            } else {
-                exe.with_file_name("native-O0")
-            };
+        for (level, output) in [("O2", exe.clone()), ("O0", exe.with_file_name("native-O0"))] {
             // Keep checked source IR fixed. Only machine-code optimisation differs
             // between the comparison and diagnostic variants.
             let code_input = b.out.join(format!("native-{level}.o"));
@@ -745,32 +742,72 @@ mod tests {
             "top/argv-replies.json",
             "top/future-evidence.bin",
         ] {
-            let path = fixture.build.out.join(name);
-            let bytes = format!("published bytes for {name}\n");
-            write(&path, &bytes).unwrap();
-            let symlink = fixture.root.join("published-symlink");
-            let hardlink = fixture.root.join("published-hardlink");
-            std::os::unix::fs::symlink(&path, &symlink).unwrap();
-            fs::hard_link(&path, &hardlink).unwrap();
-            for destination in [&path, &symlink, &hardlink] {
-                for key in [OptionKey::ComparisonRecord, OptionKey::ComparisonOutput] {
-                    fixture
-                        .options
-                        .values
-                        .insert(key, destination.display().to_string());
-                    let result = Comparison::admit(&fixture.options, &mut fixture.build);
-                    assert!(
-                        matches!(result, Err(ref error) if error.starts_with("BD-E-OUTPUT-PATH")),
-                        "{key}: {} was not rejected",
-                        destination.display()
-                    );
-                    assert_eq!(fs::read(&path).unwrap(), bytes.as_bytes(), "{name}");
-                    assert!(fixture.build.commands.is_empty());
-                    fixture.options.values.remove(&key);
-                }
-            }
-            fs::remove_file(symlink).unwrap();
-            fs::remove_file(hardlink).unwrap();
+            published_alias_cases(&mut fixture, name);
+        }
+    }
+    fn published_alias_cases(fixture: &mut Fixture, name: &str) {
+        let path = fixture.build.out.join(name);
+        let bytes = format!("published bytes for {name}\n");
+        write(&path, &bytes).unwrap();
+        let symlink = fixture.root.join("published-symlink");
+        let hardlink = fixture.root.join("published-hardlink");
+        std::os::unix::fs::symlink(&path, &symlink).unwrap();
+        fs::hard_link(&path, &hardlink).unwrap();
+        let cases = [&path, &symlink, &hardlink]
+            .into_iter()
+            .flat_map(|destination| {
+                [OptionKey::ComparisonRecord, OptionKey::ComparisonOutput]
+                    .map(|key| (destination, key))
+            });
+        for (destination, key) in cases {
+            reject_published_destination(fixture, name, destination, key);
+            assert_eq!(fs::read(&path).unwrap(), bytes.as_bytes(), "{name}");
+            assert!(fixture.build.commands.is_empty());
+        }
+        fs::remove_file(symlink).unwrap();
+        fs::remove_file(hardlink).unwrap();
+    }
+    fn reject_published_destination(
+        fixture: &mut Fixture,
+        name: &str,
+        destination: &Path,
+        key: OptionKey,
+    ) {
+        fixture
+            .options
+            .values
+            .insert(key, destination.display().to_string());
+        let error = Comparison::admit(&fixture.options, &mut fixture.build)
+            .err()
+            .expect("published destination was admitted");
+        assert!(
+            error.starts_with("BD-E-OUTPUT-PATH"),
+            "{name}: {key}: {} was not rejected",
+            destination.display()
+        );
+        fixture.options.values.remove(&key);
+    }
+    #[test]
+    fn comparison_admission_requires_a_readable_prior_inventory() {
+        let mut fixture = Fixture::new("published-inventory-errors");
+        materialised(&mut fixture);
+        let cases = [
+            ("missing directory", fixture.root.join("missing")),
+            ("regular file", fixture.options.inputs[0].clone()),
+        ];
+        for (name, directory) in cases {
+            fixture.build.out = directory.clone();
+            let error = Comparison::admit(&fixture.options, &mut fixture.build)
+                .err()
+                .expect("unreadable prior inventory was admitted");
+            assert!(
+                error.starts_with(&format!(
+                    "BD-E-OUTPUT-PATH: cannot inventory {}: ",
+                    directory.display()
+                )),
+                "{name}: {error}"
+            );
+            assert!(fixture.build.commands.is_empty());
         }
     }
     #[test]

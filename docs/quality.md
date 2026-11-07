@@ -165,22 +165,43 @@ Round-2 verification (headless, job-local TMPDIR/CARGO_TARGET_DIR, pinned siblin
 | `cargo fmt --all --check`, `timeout 90 cargo clippy --offline -j3 --all-targets -- -D warnings`, `git diff --check` | PASS. |
 | `timeout 30 python3 scripts/quality.py` | **RED (exit 1)**, structural growth listed below; zero litter/process identifiers. |
 
-The added inventory guard and exhaustive regressions increase the measured
-structure. These are actual over-baseline measurements, not accepted allowances;
-**the baseline and all thresholds are unchanged**. The outstanding ratchet failure
-is tracked as bennett-driver-qrd. No full push gate was run.
+At `ebe54e5`, the added inventory guard and exhaustive regressions exceeded the
+existing structural baseline. The follow-up for bennett-driver-qrd reproduced
+that failure, then restored the ratchet through restructuring. **The baseline,
+thresholds and source scope are unchanged**; the baseline JSON is byte-identical
+to reviewed `35a7d27`.
 
-| Source | Existing baseline | Current measurement |
-|---|---|---|
-| `src/native.rs` complexity | 138 | 153 |
-| `src/native.rs` functions over 25 lines | 5 | 6 (new admission regression is 45 lines) |
-| `src/output_paths.rs` complexity | 33 | 40 |
-| `tests/output_paths.py` complexity | 8 | 12 |
+| Source | Existing baseline | At `ebe54e5` | After restructuring |
+|---|---:|---:|---:|
+| `src/native.rs` complexity | 138 | 153 | 136 |
+| `src/native.rs` functions over 25 lines | 5 | 6 | 5 |
+| `src/output_paths.rs` complexity | 33 | 40 | 33 |
+| `tests/output_paths.py` complexity | 8 | 12 | 7 |
 
-Current totals are 60 tracked source files, 225 functions, longest function 207
-lines, and 69 wrapper matches. Per-file longest-function and wrapper limits did
-not grow. The hygiene fix itself adds no structural regression. The nits in
-bennett-driver-mqb and existing publication obligations remain open.
+The admission regression retains all 11 artifact kinds and all six combinations
+of destination option and alias kind, with byte-preservation and zero-command
+assertions. Named setup and rejection phases replace the nested test body. Missing
+and non-directory inventories are additional table-driven admission error cases.
+The recursive inventory has one owner; opening and collecting directory entries
+share its contextual error mapping. Input and earlier-destination collisions
+share one rejection branch, preserving their order and diagnostic text. Native
+variant paths are table data, and the marker audit selects the same first marker.
+Python conjunctions become individual assertions; every original check remains.
+
+Follow-up verification (same headless job environment and gate pins):
+
+| Command | Result |
+|---|---|
+| `timeout 30 python3 scripts/quality.py` | PASS; previously reproduced all four structural overages at `ebe54e5`. |
+| `timeout 900 cargo test --offline -j3 -- --test-threads=4` | PASS, **60.57 s** wall; 20 unit + 26 fixture + 2 pipeline tests, the same 5 named ignored tests. Includes the LLVM 18/23 published-evidence collisions and native O0/O2 execution fixtures. |
+| `timeout 30 python3 -B tests/quality.py` | PASS, all 13 hygiene/metric mutation tests and legitimate exemption controls. |
+| `timeout 30 .tmp/quality-driver/alias-differential/check "$PWD/.tmp/quality-driver/alias-differential/inventory"` | PASS; modules compiled from `ebe54e5` and current source agree on exact results/diagnostics for 512 alias admissions and on four inventory results/path vectors. |
+| `cargo fmt --all --check`, `timeout 90 cargo clippy --offline -j3 --all-targets -- -D warnings`, `git diff --check` | PASS. |
+
+Current totals are 60 tracked source files, 228 functions, longest function 207
+lines, and 69 wrapper matches, with zero litter/process identifiers. No per-file
+limit grows. No full push gate was run. The nits in bennett-driver-mqb and existing
+publication obligations remain open.
 
 <!-- quality-baseline -->
 ```json

@@ -35,8 +35,7 @@ pub fn published_artifacts(directory: &Path, paths: &mut Vec<PathBuf>) -> Result
         )
     };
     let entries = fs::read_dir(directory)
-        .map_err(inventory_error)?
-        .collect::<std::io::Result<Vec<_>>>()
+        .and_then(|entries| entries.collect::<std::io::Result<Vec<_>>>())
         .map_err(inventory_error)?;
     for entry in entries {
         let path = entry.path();
@@ -78,19 +77,15 @@ pub fn admit(inputs: &[PathBuf], outputs: &[(&str, PathBuf)]) -> Result<()> {
         })
     };
     for (index, (role, path)) in outputs.iter().enumerate() {
-        for input in inputs {
-            if aliases(path, input)? {
-                return Err(format!(
-                    "BD-E-OUTPUT-PATH: {role} destination {} aliases input {}",
-                    path.display(),
-                    input.display()
-                ));
-            }
-        }
-        for (other_role, other) in &outputs[..index] {
+        let protected = inputs.iter().map(|input| ("input".into(), input)).chain(
+            outputs[..index]
+                .iter()
+                .map(|(role, path)| (format!("{role} destination"), path)),
+        );
+        for (other_role, other) in protected {
             if aliases(path, other)? {
                 return Err(format!(
-                    "BD-E-OUTPUT-PATH: {role} destination {} aliases {other_role} destination {}",
+                    "BD-E-OUTPUT-PATH: {role} destination {} aliases {other_role} {}",
                     path.display(),
                     other.display()
                 ));

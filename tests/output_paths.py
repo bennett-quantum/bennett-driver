@@ -28,9 +28,11 @@ with tempfile.TemporaryDirectory(dir=root/'.tmp',prefix='output-paths-') as temp
    p=subprocess.run([sys.argv[1],f'--bennett-llvm-major={major}',f'--bennett-materialised={device}',
     f'--bennett-out={out}',f'--bennett-comparison-layout={layout}','--bennett-layout-data-base=65536',*extra],
     capture_output=True,timeout=120)
-   assert p.returncode and b'BD-E-OUTPUT-PATH' in p.stderr,(major,name,p.returncode,p.stderr)
+   assert p.returncode,(major,name,p.returncode,p.stderr)
+   assert b'BD-E-OUTPUT-PATH' in p.stderr,(major,name,p.returncode,p.stderr)
    assert all(hashlib.sha256(path.read_bytes()).hexdigest()==sha for path,sha in inputs.items()),name
-   assert not (out/'native-O2').exists() and not (out/'native-O0').exists(),name
+   assert not (out/'native-O2').exists(),name
+   assert not (out/'native-O0').exists(),name
   marked=d/f'marked-{major}.ll'
   marked.write_text(target_headers(major)+'''declare ptr @__bennett_qalloc(i64, i64)
 declare void @__bennett_qfree(ptr)
@@ -46,7 +48,8 @@ define i32 @top() {
    p=subprocess.run([sys.argv[1],*flags(major),f'--bennett-llvm-major={major}',
     '-bennett-dialect=0.2.10',f'--bennett-out={out}','--bennett-comparison=true',
     f'--bennett-comparison-{option}={target}',marked],capture_output=True,timeout=120)
-   assert p.returncode and b'BD-E-OUTPUT-PATH' in p.stderr,(major,name,p.returncode,p.stderr)
+   assert p.returncode,(major,name,p.returncode,p.stderr)
+   assert b'BD-E-OUTPUT-PATH' in p.stderr,(major,name,p.returncode,p.stderr)
    build=json.loads((out/'build.json').read_text())
    assert hashlib.sha256(target.read_bytes()).hexdigest()==build['outputs'][name]['sha256'],name
   for name in ('top/certificate.json','launches.json','build.json','build.sha256',
@@ -57,14 +60,16 @@ define i32 @top() {
     '-bennett-dialect=0.2.10',f'--bennett-out={out}','--bennett-comparison=true',
     f'--bennett-comparison-layout={layout}','--bennett-layout-data-base=65536',
     f'--bennett-comparison-record={out/name}',marked],capture_output=True,timeout=120)
-   assert p.returncode and b'BD-E-OUTPUT-PATH' in p.stderr,(major,name,p.returncode,p.stderr)
+   assert p.returncode,(major,name,p.returncode,p.stderr)
+   assert b'BD-E-OUTPUT-PATH' in p.stderr,(major,name,p.returncode,p.stderr)
    assert b'Traceback' not in p.stderr,(name,p.stderr)
    cert=json.loads((out/'top/certificate.json').read_text())
    receipt=json.loads((out/'top/launch-record.json').read_text())
    assert 'producer' in cert,(name,cert)
    assert receipt['artifacts']['top/certificate.json']['sha256']==hashlib.sha256((out/'top/certificate.json').read_bytes()).hexdigest(),name
    build=json.loads((out/'build.json').read_text())
-   assert build['status']=='failed' and 'BD-E-OUTPUT-PATH' in build['error'],name
+   assert build['status']=='failed',name
+   assert 'BD-E-OUTPUT-PATH' in build['error'],name
    assert not (out/'comparison-linked.bc').exists(),name
    assert not (out/'native-comparison.json').exists(),name
  print('Both majors: direct/symlink/hardlink input aliases and record/O2/O0 collisions refused before writes')
