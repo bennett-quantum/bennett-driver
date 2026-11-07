@@ -136,6 +136,52 @@ assertion was removed or weakened. The plugin-native-comparison pin remains
 `5a092cded3ba3351ba8cc2977a7eaf3b40f46526`. Full push-gate and review orchestration
 remain the maintainer's merge step.
 
+Round-2 review fixes preserve the baseline below. Comparison admission now
+inventories every existing output file and directory before writing comparison
+artifacts. The direct unit matrix covers 11 evidence kinds, both configurable
+destinations, and direct/symlink/hardlink aliases; it asserts unchanged bytes
+and zero executed commands. The real LLVM 18/23 marked-`top` reproduction covers
+the launch inventory, root build/hash, and each required entry artifact, including
+the certificate. All fail with `BD-E-OUTPUT-PATH` before comparison writes; the
+certificate retains its producer and the error-finalisation refresh keeps its
+receipt hash valid. This closes bennett-driver-av7.
+
+The hygiene classifier now masks only a named Rust `#[ignore = "..."]`
+attribute span. Code following it on the same line is scanned. Rust production
+and Python test function bodies are scanned too; valid function identifiers
+need no exemption. The actual CLI mutations first failed for three previously
+hidden inline bodies, then all **13 tests passed**, including the legitimate
+promised-switch control. This closes bennett-driver-a79.
+
+Round-2 verification (headless, job-local TMPDIR/CARGO_TARGET_DIR, pinned siblings):
+
+| Command | Result |
+|---|---|
+| `timeout 900 cargo test --offline -j3 -- --test-threads=4` | PASS, **60.85 s** wall; 19 unit + 26 fixture + 2 pipeline tests, 5 existing named ignored tests. |
+| `timeout 90 cargo test --offline -j3 --bin bennett-driver -- --nocapture --test-threads=4` | PASS, 19 tests; artifact bytes unchanged during admission rejection. |
+| `timeout 180 cargo test --offline -j3 --test fixtures output_paths -- --nocapture --test-threads=4` | PASS, real LLVM 18/23 evidence collision matrix, 9.61 s. |
+| `timeout 30 python3 -B tests/quality.py` | PASS, 13 CLI/metric mutation tests; three new cases demonstrated red before the fix. |
+| `timeout 300 cargo llvm-cov --offline -j3 --summary-only -- --test-threads=4` | PASS, **92.73% Rust lines** (2,564/2,765); subprocess profiles included. |
+| `cargo fmt --all --check`, `timeout 90 cargo clippy --offline -j3 --all-targets -- -D warnings`, `git diff --check` | PASS. |
+| `timeout 30 python3 scripts/quality.py` | **RED (exit 1)**, structural growth listed below; zero litter/process identifiers. |
+
+The added inventory guard and exhaustive regressions increase the measured
+structure. These are actual over-baseline measurements, not accepted allowances;
+**the baseline and all thresholds are unchanged**. The outstanding ratchet failure
+is tracked as bennett-driver-qrd. No full push gate was run.
+
+| Source | Existing baseline | Current measurement |
+|---|---|---|
+| `src/native.rs` complexity | 138 | 153 |
+| `src/native.rs` functions over 25 lines | 5 | 6 (new admission regression is 45 lines) |
+| `src/output_paths.rs` complexity | 33 | 40 |
+| `tests/output_paths.py` complexity | 8 | 12 |
+
+Current totals are 60 tracked source files, 225 functions, longest function 207
+lines, and 69 wrapper matches. Per-file longest-function and wrapper limits did
+not grow. The hygiene fix itself adds no structural regression. The nits in
+bennett-driver-mqb and existing publication obligations remain open.
+
 <!-- quality-baseline -->
 ```json
 {
