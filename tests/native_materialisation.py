@@ -8,6 +8,16 @@ def run(args):
  assert p.returncode==0,p.stderr.decode()
  return p.stdout
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
+def audit_source_inputs(variants, digest, plugin, production):
+ assert all(v['inputs']['materialised']['sha256']==digest for v in variants), variants
+ assert all(v['inputs']['plugin']['sha256']==sha(plugin) for v in variants), variants
+ assert all(v['inputs']['launch_record']['sha256']==sha(production/'top/launch-record.json') for v in variants), variants
+def audit_adapter_inputs(variants, out, harness):
+ assert all(v['inputs']['materialisation_report']['sha256']==sha(out/'native-materialisation.json') for v in variants), variants
+ assert all(v['inputs']['harness']['sha256']==sha(harness) for v in variants), variants
+ assert all(v['inputs']['harness_bitcode']['sha256']==sha(out/'bennett-native-input.bc') for v in variants), variants
+def audit_input_hashes(variants):
+ assert all(sha(pathlib.Path(value['path']))==value['sha256'] for v in variants for value in v['inputs'].values()), variants
 evidence=os.environ.get('BENNETT_DRIVER_NATIVE_EVIDENCE')
 dialect=os.environ.get('BENNETT_DRIVER_NATIVE_DIALECT', '0.2.13')
 if evidence:pathlib.Path(evidence).mkdir(parents=True,exist_ok=False)
@@ -54,17 +64,10 @@ define i32 @top() {
   # requires the real launch backend; a fake marker/backend is never supplied.
   assert result.returncode and b'BD-E-NATIVE-LINK' in result.stderr,result.stderr
   assert not (out/'native-O2').exists()
-  variants=json.loads((out/'native-comparisons.json').read_text())
-  for variant in variants[:2]:
-   inputs=variant['inputs']
-   assert inputs['materialised']['sha256']==digest
-   assert inputs['plugin']['sha256']==sha(plugin)
-   assert inputs['launch_record']['sha256']==sha(production/'top/launch-record.json')
-   assert inputs['materialisation_report']['sha256']==sha(out/'native-materialisation.json')
-   assert inputs['harness']['sha256']==sha(harness)
-   assert inputs['harness_bitcode']['sha256']==sha(out/'bennett-native-input.bc')
-   for value in inputs.values():
-    assert sha(pathlib.Path(value['path']))==value['sha256'],value
+  variants=json.loads((out/'native-comparisons.json').read_text())[:2]
+  audit_source_inputs(variants, digest, plugin, production)
+  audit_adapter_inputs(variants, out, harness)
+  audit_input_hashes(variants)
   for label,option in [('entry','--bennett-comparison-entry=missing'),
     ('plugin-pin','--bennett-plugin-sha256='+'0'*64)]:
    refused=d/f'{label}-{major}'

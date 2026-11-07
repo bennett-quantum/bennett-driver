@@ -386,7 +386,7 @@ impl Comparison {
         );
         let native_source = if let Some(adapter) = &materialisation {
             let finalised = adapter.run(b, m, native_adapter::Phase::Finalise, checked)?;
-            adapter.require_startup(o, b, m)?;
+            self.require_startup(o, b, &adapter.entry)?;
             finalised
         } else {
             checked.clone()
@@ -498,44 +498,129 @@ impl Comparison {
             .collect();
         Ok(NativeProgram { closed, residual })
     }
-    fn link_inputs(
+    fn require_startup(&self, o: &Options, b: &mut Build, entry: &str) -> Result<()> {
+        let binding = Self::startup_binding(b)?;
+        let binding = binding.trim();
+        if binding.is_empty() {
+            return Ok(());
+        }
+        if let Some(key) = self.startup_input(o, b, binding)? {
+            Self::record_startup(b, binding, key);
+            return Ok(());
+        }
+        Err(format!(
+            "BD-E-NATIVE-STARTUP: §17.7/§19.5 selected R entry {} requires a real launch/startup component that loads the actual ISA object, calls {binding} with its live bennett_program_t before entry, and retains that program. No supplied native input/backend references this binding; R shadow-stack/source-step initialisation is missing. No fake program binding or host libc/libm fallback is permitted",
+            entry
+        ))
+    }
+    fn startup_binding(b: &mut Build) -> Result<String> {
+        b.run(
+            "native-startup-requirement",
+            vec![
+                "python3".into(),
+                "-c".into(),
+                "import json,pathlib,sys\nr=json.loads(pathlib.Path(sys.argv[1]).read_text())\nif r['source_mode']=='reversible':\n s=r['binding_symbol']; assert isinstance(s,str) and s and not any(c.isspace() for c in s), 'invalid binding_symbol'\n print(s)\n".into(),
+                b.out.join("native-materialisation.json").display().to_string(),
+            ],
+            None,
+        )
+    }
+    fn startup_input(
         &self,
         o: &Options,
-        b: &Build,
+        b: &mut Build,
+        binding: &str,
+    ) -> Result<Option<OptionKey>> {
+        for key in [OptionKey::NativeInput, OptionKey::NativeBackend]
+            .into_iter()
+            .filter(|key| o.get(*key).is_some())
+        {
+            if self.references_startup(b, key, binding)? {
+                return Ok(Some(key));
+            }
+        }
+        Ok(None)
+    }
+    fn references_startup(&self, b: &mut Build, key: OptionKey, binding: &str) -> Result<bool> {
+        b.run(
+            "native-startup-imports",
+            vec![
+                tool(self.m, "llvm-nm"),
+                "--undefined-only".into(),
+                b.out.join(format!("{key}.bc")).display().to_string(),
+            ],
+            None,
+        )
+        .map(|imports| {
+            imports
+                .lines()
+                .filter_map(|line| line.split_whitespace().last())
+                .any(|symbol| symbol == binding)
+        })
+    }
+    fn record_startup(b: &mut Build, binding: &str, key: OptionKey) {
+        b.record.set(
+            "native_startup",
+            obj([
+                (
+                    "status",
+                    "binding reference present; lifecycle not certified".into(),
+                ),
+                ("binding_symbol", binding.into()),
+                ("component", key.as_str().into()),
+            ]),
+        );
+    }
+    fn source_inputs(
+        &self,
         checked: &CheckedComparison,
         program: &NativeProgram,
         codegen: &Path,
-    ) -> Result<Json> {
-        let mut inputs = BTreeMap::from([
+    ) -> BTreeMap<&'static str, PathBuf> {
+        BTreeMap::from([
             ("materialised", self.device.clone()),
             ("runtimes", self.runtime.clone()),
             ("base_arith", self.arith.clone()),
             ("arith", checked.arith.clone()),
             ("native_check", self.adapter.clone()),
             ("native_support", self.support.clone()),
-            ("linked", b.out.join("comparison-linked.bc")),
-            ("check_input", b.out.join("comparison-check-input.bc")),
             ("checked", checked.checked.clone()),
-            ("adapted", b.out.join("comparison-adapted.bc")),
             ("comparison", program.closed.clone()),
-            ("layout", b.out.join("resolved-layout.json")),
-            ("layout_ir", b.out.join("native-layout.ll")),
-            ("layout_bitcode", b.out.join("native-layout.bc")),
-            ("linker_script", b.out.join("comparison.ld")),
             ("codegen_object", codegen.to_path_buf()),
-        ]);
-        for (key, role, compiled_role) in [
+        ])
+    }
+    fn generated_inputs(b: &Build) -> BTreeMap<&'static str, PathBuf> {
+        [
+            ("linked", "comparison-linked.bc"),
+            ("check_input", "comparison-check-input.bc"),
+            ("adapted", "comparison-adapted.bc"),
+            ("layout", "resolved-layout.json"),
+            ("layout_ir", "native-layout.ll"),
+            ("layout_bitcode", "native-layout.bc"),
+            ("linker_script", "comparison.ld"),
+        ]
+        .into_iter()
+        .map(|(role, name)| (role, b.out.join(name)))
+        .collect()
+    }
+    fn component_inputs(
+        o: &Options,
+        b: &Build,
+        inputs: &mut BTreeMap<&'static str, PathBuf>,
+    ) -> Result<()> {
+        let components = [
             (OptionKey::NativeInput, "harness", "harness_bitcode"),
             (OptionKey::NativeBackend, "backend", "backend_bitcode"),
-        ] {
-            if let Some(path) = o.get(key) {
-                inputs.insert(role, absolute(path)?);
-                inputs.insert(compiled_role, b.out.join(format!("{key}.bc")));
-            }
+        ]
+        .into_iter()
+        .filter_map(|(key, role, compiled)| o.get(key).map(|path| (key, role, compiled, path)));
+        for (key, role, compiled, path) in components {
+            inputs.insert(role, absolute(path)?);
+            inputs.insert(compiled, b.out.join(format!("{key}.bc")));
         }
-        if let Some(path) = o.get(OptionKey::ComparisonLayout) {
-            inputs.insert("comparison_layout", absolute(path)?);
-        }
+        Ok(())
+    }
+    fn materialisation_inputs(&self, b: &Build, inputs: &mut BTreeMap<&'static str, PathBuf>) {
         if let Some(adapter) = &self.materialisation {
             inputs.extend([
                 ("plugin", adapter.plugin.clone()),
@@ -550,26 +635,42 @@ impl Comparison {
                 ),
             ]);
         }
-        let artifacts = inputs
-            .into_iter()
-            .map(|(role, path)| Ok((role, artifact(&path, None)?)))
-            .collect::<Result<Vec<_>>>()?;
-        Ok(obj(artifacts))
     }
-    fn link_variants(
+    fn link_inputs(
+        &self,
+        o: &Options,
+        b: &Build,
+        checked: &CheckedComparison,
+        program: &NativeProgram,
+        codegen: &Path,
+    ) -> Result<Json> {
+        let mut inputs = self.source_inputs(checked, program, codegen);
+        inputs.extend(Self::generated_inputs(b));
+        Self::component_inputs(o, b, &mut inputs)?;
+        if let Some(path) = o.get(OptionKey::ComparisonLayout) {
+            inputs.insert("comparison_layout", absolute(path)?);
+        }
+        self.materialisation_inputs(b, &mut inputs);
+        inputs
+            .into_iter()
+            .map(|(role, path)| artifact(&path, None).map(|value| (role, value)))
+            .collect::<Result<Vec<_>>>()
+            .map(obj)
+    }
+    fn prepare_variant(
         &self,
         o: &Options,
         b: &mut Build,
         checked: &CheckedComparison,
         program: &NativeProgram,
-    ) -> Result<()> {
+        sysroot: &Sysroot,
+        variant: (&str, &Path),
+    ) -> Result<(Vec<String>, Json)> {
+        let (level, output) = variant;
         let m = self.m;
         let support = &self.support;
         let materialisation = &self.materialisation;
         let runtime = &self.runtime;
-        let record_path = &self.record_path;
-        let exe = &self.exe;
-        let sysroot = o.required_sysroot()?;
         let CheckedComparison {
             arith,
             device_sha,
@@ -579,134 +680,173 @@ impl Comparison {
         } = checked;
         let NativeProgram { closed, residual } = program;
         let script = b.out.join("comparison.ld");
+        // Keep checked source IR fixed. Only machine-code optimisation differs
+        // between the comparison and diagnostic variants.
+        let code_input = b.out.join(format!("native-{level}.o"));
+        b.run(
+            &format!("native-codegen-{level}"),
+            vec![
+                tool(m, "llc"),
+                format!("-{level}"),
+                "-filetype=obj".into(),
+                "-data-sections".into(),
+                // A density above 100% selects branch lowering instead of
+                // private jump tables whose readonly data differs by O-level.
+                "-jump-table-density=101".into(),
+                "-optsize-jump-table-density=101".into(),
+                closed.display().to_string(),
+                "-o".into(),
+                code_input.display().to_string(),
+            ],
+            None,
+        )?;
+        let mut argv = vec![
+            tool(m, "clang"),
+            format!("-{level}"),
+            "-nostdlib".into(),
+            "-nostdinc".into(),
+            "-static".into(),
+            "-no-pie".into(),
+            "-fno-merge-all-constants".into(),
+            code_input.display().to_string(),
+        ];
+        argv.push(sysroot.link_flag());
+        argv.extend([
+            format!("-Wl,-T,{}", script.display()),
+            "-Wl,-e,_start".into(),
+            "-Wl,--fatal-warnings".into(),
+            "-Wl,--no-undefined".into(),
+            format!(
+                "-Wl,-Map,{}",
+                b.out.join(format!("native-{level}.map")).display()
+            ),
+            "-o".into(),
+            output.display().to_string(),
+        ]);
+        let record = obj([
+            ("schema", "bennett-driver-native-comparison-1".into()),
+            ("variant", level.into()),
+            ("llvm_major", m.into()),
+            ("native_support_sha256", sha(support)?.into()),
+            (
+                "resolved_layout_sha256",
+                sha(&b.out.join("resolved-layout.json"))?.into(),
+            ),
+            ("residual_markers", strings(residual)),
+            ("materialised_sha256", device_sha.clone().into()),
+            (
+                "provenance",
+                if materialisation.is_some() {
+                    "selected-entry launch record verified".into()
+                } else {
+                    "explicit module; producer receipt not verified".into()
+                },
+            ),
+            ("link_argv", strings(&argv)),
+            ("bitcode_link_argv", strings(bitcode_link)),
+            ("linked_sha256", sha(closed)?.into()),
+            ("codegen_object", artifact(&code_input, None)?),
+            (
+                "inputs",
+                self.link_inputs(o, b, checked, program, &code_input)?,
+            ),
+            ("runtimes_sha256", sha(runtime)?.into()),
+            ("arith_sha256", sha(arith)?.into()),
+            ("base_arith_sha256", base_arith_sha.clone().into()),
+            ("status", "planned".into()),
+        ]);
+        Ok((argv, record))
+    }
+    fn write_primary_record(&self, level: &str, record: &Json) -> Result<()> {
+        if level == "O2" {
+            write(&self.record_path, record.encode() + "\n")?;
+        }
+        Ok(())
+    }
+    fn execute_variant(
+        &self,
+        b: &mut Build,
+        level: &str,
+        output: &Path,
+        argv: Vec<String>,
+        record: &mut Json,
+    ) -> Result<Option<String>> {
+        match b.run(&format!("native-{level}"), argv, None) {
+            Ok(_) => {
+                record.set("status", "linked".into());
+                self.audit_variant(b, output)?;
+                record.set("sha256", sha(output)?.into());
+                Ok(None)
+            }
+            Err(error) => {
+                record.set("status", "failed".into());
+                record.set("error", error.clone().into());
+                Ok(Some(error))
+            }
+        }
+    }
+    fn audit_variant(&self, b: &mut Build, output: &Path) -> Result<()> {
+        let audit = b.run(
+            "native-undefined",
+            vec![
+                tool(self.m, "llvm-nm"),
+                "--undefined-only".into(),
+                output.display().to_string(),
+            ],
+            None,
+        )?;
+        if !audit.trim().is_empty() {
+            return Err(format!("comparison unresolved imports: {audit}"));
+        }
+        self.audit_variant_layout(b, output)
+    }
+    fn audit_variant_layout(&self, b: &mut Build, output: &Path) -> Result<()> {
+        b.run(
+            "native-layout-audit",
+            vec![
+                "python3".into(),
+                "-c".into(),
+                include_str!("../scripts/native-layout.py").into(),
+                "--audit".into(),
+                self.m.to_string(),
+                output.display().to_string(),
+                b.out.join("resolved-layout.json").display().to_string(),
+            ],
+            None,
+        )
+        .map(|_| ())
+    }
+    fn link_variants(
+        &self,
+        o: &Options,
+        b: &mut Build,
+        checked: &CheckedComparison,
+        program: &NativeProgram,
+    ) -> Result<()> {
+        let sysroot = o.required_sysroot()?;
+        let residual = &program.residual;
         let mut results = vec![];
         let mut first_error = None;
-        for (level, output) in [("O2", exe.clone()), ("O0", exe.with_file_name("native-O0"))] {
-            // Keep checked source IR fixed. Only machine-code optimisation differs
-            // between the comparison and diagnostic variants.
-            let code_input = b.out.join(format!("native-{level}.o"));
-            b.run(
-                &format!("native-codegen-{level}"),
-                vec![
-                    tool(m, "llc"),
-                    format!("-{level}"),
-                    "-filetype=obj".into(),
-                    "-data-sections".into(),
-                    // A density above 100% selects branch lowering instead of
-                    // private jump tables whose readonly data differs by O-level.
-                    "-jump-table-density=101".into(),
-                    "-optsize-jump-table-density=101".into(),
-                    closed.display().to_string(),
-                    "-o".into(),
-                    code_input.display().to_string(),
-                ],
-                None,
-            )?;
-            let mut argv = vec![
-                tool(m, "clang"),
-                format!("-{level}"),
-                "-nostdlib".into(),
-                "-nostdinc".into(),
-                "-static".into(),
-                "-no-pie".into(),
-                "-fno-merge-all-constants".into(),
-                code_input.display().to_string(),
-            ];
-            argv.push(sysroot.link_flag());
-            argv.extend([
-                format!("-Wl,-T,{}", script.display()),
-                "-Wl,-e,_start".into(),
-                "-Wl,--fatal-warnings".into(),
-                "-Wl,--no-undefined".into(),
-                format!(
-                    "-Wl,-Map,{}",
-                    b.out.join(format!("native-{level}.map")).display()
-                ),
-                "-o".into(),
-                output.display().to_string(),
-            ]);
-            let mut record = obj([
-                ("schema", "bennett-driver-native-comparison-1".into()),
-                ("variant", level.into()),
-                ("llvm_major", m.into()),
-                ("native_support_sha256", sha(support)?.into()),
-                (
-                    "resolved_layout_sha256",
-                    sha(&b.out.join("resolved-layout.json"))?.into(),
-                ),
-                ("residual_markers", strings(residual)),
-                ("materialised_sha256", device_sha.clone().into()),
-                (
-                    "provenance",
-                    if materialisation.is_some() {
-                        "selected-entry launch record verified".into()
-                    } else {
-                        "explicit module; producer receipt not verified".into()
-                    },
-                ),
-                ("link_argv", strings(&argv)),
-                ("bitcode_link_argv", strings(bitcode_link)),
-                ("linked_sha256", sha(closed)?.into()),
-                ("codegen_object", artifact(&code_input, None)?),
-                (
-                    "inputs",
-                    self.link_inputs(o, b, checked, program, &code_input)?,
-                ),
-                ("runtimes_sha256", sha(runtime)?.into()),
-                ("arith_sha256", sha(arith)?.into()),
-                ("base_arith_sha256", base_arith_sha.clone().into()),
-                ("status", "planned".into()),
-            ]);
-            if level == "O2" {
-                write(record_path, record.encode() + "\n")?;
-            }
-            let r = b.run(&format!("native-{level}"), argv, None);
-            record.set(
-                "status",
-                if r.is_ok() {
-                    "linked".into()
-                } else {
-                    "failed".into()
-                },
-            );
-            if let Err(e) = r {
-                record.set("error", e.clone().into());
-                if first_error.is_none() {
-                    first_error = Some(e);
-                }
-            } else {
-                let audit = b.run(
-                    "native-undefined",
-                    vec![
-                        tool(m, "llvm-nm"),
-                        "--undefined-only".into(),
-                        output.display().to_string(),
-                    ],
-                    None,
-                )?;
-                if !audit.trim().is_empty() {
-                    return Err(format!("comparison unresolved imports: {audit}"));
-                }
-                b.run(
-                    "native-layout-audit",
-                    vec![
-                        "python3".into(),
-                        "-c".into(),
-                        include_str!("../scripts/native-layout.py").into(),
-                        "--audit".into(),
-                        m.to_string(),
-                        output.display().to_string(),
-                        b.out.join("resolved-layout.json").display().to_string(),
-                    ],
-                    None,
-                )?;
-                record.set("sha256", sha(&output)?.into());
-            }
-            if level == "O2" {
-                write(record_path, record.encode() + "\n")?;
-            }
+        for (level, output) in [
+            ("O2", self.exe.clone()),
+            ("O0", self.exe.with_file_name("native-O0")),
+        ] {
+            let (argv, mut record) =
+                self.prepare_variant(o, b, checked, program, sysroot, (level, &output))?;
+            self.write_primary_record(level, &record)?;
+            let error = self.execute_variant(b, level, &output, argv, &mut record)?;
+            first_error = first_error.or(error);
+            self.write_primary_record(level, &record)?;
             results.push(record);
         }
+        Self::report_variants(b, results, residual, first_error)
+    }
+    fn report_variants(
+        b: &mut Build,
+        mut results: Vec<Json>,
+        residual: &[String],
+        first_error: Option<String>,
+    ) -> Result<()> {
         results.push(obj([("variant", "O0-ASan".into()), ("status", "blocked".into()),
         ("code","BD-E-NATIVE-SANITIZER".into()),("stage","native-sanitizer".into()),
         ("function","<whole-program>".into()),("value_or_call","<instrumentation>".into()),
@@ -720,6 +860,9 @@ impl Comparison {
             b.out.join("native-comparisons.json"),
             Json::Array(results).encode() + "\n",
         )?;
+        Self::link_result(residual, first_error)
+    }
+    fn link_result(residual: &[String], first_error: Option<String>) -> Result<()> {
         if !residual.is_empty() {
             return Err(format!(
                 "BD-E-NATIVE-MARKERS: §17.7 actual materialised device still calls {}; select the launch-record-verified marker-free comparison adapter; no fake definitions. {}",
