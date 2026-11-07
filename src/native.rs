@@ -385,7 +385,9 @@ impl Comparison {
             artifact(&b.out.join("resolved-layout.json"), None)?,
         );
         let native_source = if let Some(adapter) = &materialisation {
-            adapter.run(b, m, native_adapter::Phase::Finalise, checked)?
+            let finalised = adapter.run(b, m, native_adapter::Phase::Finalise, checked)?;
+            adapter.require_startup(o, b, m)?;
+            finalised
         } else {
             checked.clone()
         };

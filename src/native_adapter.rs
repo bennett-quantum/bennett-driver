@@ -125,4 +125,55 @@ impl Adapter {
         b.save("running")?;
         Ok(output)
     }
+    pub fn require_startup(&self, o: &Options, b: &mut Build, major: u32) -> Result<()> {
+        let binding = b.run(
+            "native-startup-requirement",
+            vec![
+                "python3".into(),
+                "-c".into(),
+                "import json,pathlib,sys\nr=json.loads(pathlib.Path(sys.argv[1]).read_text())\nif r['source_mode']=='reversible':\n s=r['binding_symbol']; assert isinstance(s,str) and s and not any(c.isspace() for c in s), 'invalid binding_symbol'\n print(s)\n".into(),
+                b.out.join("native-materialisation.json").display().to_string(),
+            ],
+            None,
+        )?;
+        let binding = binding.trim();
+        if binding.is_empty() {
+            return Ok(());
+        }
+        for key in [OptionKey::NativeInput, OptionKey::NativeBackend] {
+            if o.get(key).is_some() {
+                let imports = b.run(
+                    "native-startup-imports",
+                    vec![
+                        tool(major, "llvm-nm"),
+                        "--undefined-only".into(),
+                        b.out.join(format!("{key}.bc")).display().to_string(),
+                    ],
+                    None,
+                )?;
+                if imports
+                    .lines()
+                    .filter_map(|line| line.split_whitespace().last())
+                    .any(|symbol| symbol == binding)
+                {
+                    b.record.set(
+                        "native_startup",
+                        obj([
+                            (
+                                "status",
+                                "binding reference present; lifecycle not certified".into(),
+                            ),
+                            ("binding_symbol", binding.into()),
+                            ("component", key.as_str().into()),
+                        ]),
+                    );
+                    return Ok(());
+                }
+            }
+        }
+        Err(format!(
+            "BD-E-NATIVE-STARTUP: §17.7/§19.5 selected R entry {} requires a real launch/startup component that loads the actual ISA object, calls {binding} with its live bennett_program_t before entry, and retains that program. No supplied native input/backend references this binding; R shadow-stack/source-step initialisation is missing. No fake program binding or host libc/libm fallback is permitted",
+            self.entry
+        ))
+    }
 }
