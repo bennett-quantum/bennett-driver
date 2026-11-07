@@ -198,10 +198,53 @@ Follow-up verification (same headless job environment and gate pins):
 | `timeout 30 .tmp/quality-driver/alias-differential/check "$PWD/.tmp/quality-driver/alias-differential/inventory"` | PASS; modules compiled from `ebe54e5` and current source agree on exact results/diagnostics for 512 alias admissions and on four inventory results/path vectors. |
 | `cargo fmt --all --check`, `timeout 90 cargo clippy --offline -j3 --all-targets -- -D warnings`, `git diff --check` | PASS. |
 
-Current totals are 60 tracked source files, 228 functions, longest function 207
+After that follow-up, totals were 60 tracked source files, 228 functions, longest function 207
 lines, and 69 wrapper matches, with zero litter/process identifiers. No per-file
 limit grows. No full push gate was run. The nits in bennett-driver-mqb and existing
 publication obligations remain open.
+
+The final hygiene follow-up for bennett-driver-ocr restricts the named-switch
+exemption to Rust attribute tokens in code position. Lexical scanning skips
+nested block and line comments, character/byte-character literals (without
+confusing lifetimes), escaped normal/byte/C strings, and raw strings with arbitrary
+hash delimiters before recognising attributes. Only attribute bytes are masked;
+comments, literal contents and following code remain subject to the identifier
+scan. Line numbers survive multiline attributes; unterminated strings/comments
+fail loudly.
+
+The review's temporary-repository reproduction was red first: the actual quality
+CLI accepted a new identifier that the compiled Rust program emitted. The first
+generated table also failed before implementation. The final independent table
+covers **4,615 cases**: six string kinds, raw hash counts 0/1/2/3/16/255/256,
+first/interior/last/single-line positions, three column positions, literal versus
+real-attribute placement, eight lexical contexts and seven explicit controls.
+Zero-hash raw literals use identifier text because their contents cannot include
+double quotes. The 256-hash cases stress the scanner beyond Rust's compiler limit.
+Expected identifier lists come from the placement table, independent of the lexer.
+The CLI regression verifies exact emitted output, rejection and diagnostic line;
+the genuine promised-test switch controls still pass. All **17 quality tests pass**.
+
+The structural baseline, thresholds, measured languages and tracked-source scope
+remain unchanged; baseline JSON is byte-identical to `35a7d27`. Regression messages
+now use one comparison table for scalar and length-tail metrics; 4,096 comparisons
+against the reviewed implementation produced byte-identical diagnostics. The
+script remains at complexity **79**, maximum function length **28**, two functions
+over 25 lines and zero wrappers. Its tests remain at complexity **2**, maximum
+length **13** and one wrapper. Current totals: **60 source files, 240 functions,
+longest 207 lines, 69 wrappers**, with zero litter/process identifiers.
+
+Final lexical-fix verification (headless, job-local TMPDIR/CARGO_TARGET_DIR,
+unchanged gate pins; implementation `b6d789a`):
+
+| Command | Result |
+|---|---|
+| `timeout 900 cargo test --offline -j3 -- --test-threads=4` | PASS, **62.54 s** wall; 20 unit + 26 fixture + 2 pipeline tests, the same five named ignored tests. The fixture run includes all 17 quality tests. |
+| `timeout 30 python3 -B tests/quality.py` | PASS, **17 tests**, including the 4,615-case table, executable CLI reproduction and genuine-switch controls. |
+| `timeout 30 python3 scripts/quality.py` | PASS under the unchanged baseline, with zero litter/process identifiers. |
+| `git diff 5bccf0e --check` | PASS. |
+
+The nonblocking bennett-driver-mqb and publication obligations
+bennett-driver-9zg/7y4/ppz remain open. No full push gate was run.
 
 <!-- quality-baseline -->
 ```json
