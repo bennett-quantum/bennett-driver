@@ -17,13 +17,66 @@ MAX_WRAPPER_LINES = 6  # Conservative short single-expression forwarding heurist
 PROCESS = re.compile(r'\b(?:bennett-driver|brt|bp)-[a-z0-9]{3}(?:\.[0-9]+)?\b|'
                      r'\bbennett-(?=[a-z0-9]{3}\b)(?=[a-z0-9]*[0-9])[a-z0-9]{3}\b|'
                      r'\bjob/[a-z0-9-]+|\bshift[ -][0-9]+', re.I)
-# Mask only a named Rust switch attribute, never code following it on the line.
-PROMISED_SWITCH = re.compile(r'^\s*#\[ignore\s*=\s*"(?:\\.|[^"\\])*"\s*\]')
+# Attribute tokens must start in code, outside all Rust literals and comments.
+RUST_TOKEN = re.compile(
+    r'(?P<line>//[^\r\n]*)|(?P<block>/\*)|'
+    r'(?P<raw>\b(?:br|cr|r)(?P<hashes>\#*)")|'
+    r'(?P<string>(?:b|c)?"(?:\\[\s\S]|[^"\\])*")|'
+    r"(?P<char>(?:b)?'(?:\\(?:u\{[0-9a-fA-F_]+\}|x[0-9a-fA-F]{2}|[^\r\n])|[^'\\\r\n])')|"
+    r'(?P<attribute>\#\[\s*ignore\s*=\s*"(?:\\[\s\S]|[^"\\])*"\s*\])|'
+    r'(?P<unclosed>")')
+COMMENT_EDGE = re.compile(r'/\*|\*/')
 LITTER = ('*.pyc', '*.log', '*.darc', '*LAST-RUN*', '*PROGRESS*', '*/LOCK', '*.lock')
 STRINGS = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])\'', re.S)
 CONTROL = re.compile(r'\b(?:if|else|for|while|match|catch)\b|&&|\|\||[{}?]')
 RUST_FN = re.compile(r'\bfn\s+([A-Za-z_][A-Za-z_0-9]*)\b[^;{}]*\{')
 CPP_FN = re.compile(r'\b([A-Za-z_][A-Za-z_0-9]*)\s*\([^;{}]*\)\s*(?:const\s*)?\{')
+
+
+def rust_comment_end(source, start):
+    depth = 1
+    for token in COMMENT_EDGE.finditer(source, start):
+        depth += {'/*': 1, '*/': -1}[token[0]]
+        if depth == 0:
+            return token.end()
+    raise ValueError(f'unclosed Rust block comment at offset {start - 2}')
+
+
+def rust_raw_end(source, start, hashes):
+    closing = '"'+hashes
+    end = source.find(closing, start)
+    if end < 0:
+        raise ValueError(f'unclosed Rust raw string at offset {start}')
+    return end + len(closing)
+
+
+def rust_tokens(source):
+    position = 0
+    while match := RUST_TOKEN.search(source, position):
+        kind, end = match.lastgroup, match.end()
+        if kind == 'block':
+            end = rust_comment_end(source, end)
+        elif kind == 'raw':
+            end = rust_raw_end(source, end, match['hashes'])
+        elif kind == 'unclosed':
+            raise ValueError(f'unclosed Rust string at offset {match.start()}')
+        yield kind, match.start(), end
+        position = end
+
+
+def rust_hygiene(source):
+    characters = list(source)
+    for kind, start, end in rust_tokens(source):
+        if kind == 'attribute':
+            characters[start:end] = re.sub(r'[^\r\n]', ' ', source[start:end])
+    return ''.join(characters)
+
+
+def source_identifiers(name, source):
+    if Path(name).suffix == '.rs':
+        source = rust_hygiene(source)
+    return [f'{name}:{number}:{match[0]}'
+            for number, line in enumerate(source.splitlines(), 1) for match in PROCESS.finditer(line)]
 
 
 def python_mass(node, depth=0):
@@ -97,12 +150,7 @@ def measure():
         if path.parts[len(ROOT.parts)] not in ('src', 'scripts', 'tests'):
             continue
         source = path.read_bytes().decode('utf-8', errors='replace')
-        for number, line in enumerate(source.splitlines(), 1):
-            # Valid function identifiers need no exemption; scan their bodies too.
-            if path.suffix == '.rs':
-                line = PROMISED_SWITCH.sub('', line)
-            for match in PROCESS.finditer(line):
-                metrics['process_identifiers'].append(f'{name}:{number}:{match[0]}')
+        metrics['process_identifiers'].extend(source_identifiers(name, source))
         if path.suffix in ('.rs', '.cpp', '.c', '.h', '.py'):
             lengths, complexity, wrappers = functions(source, path.suffix)
             metrics['files'][name] = {'functions': len(lengths), 'max_length': max(lengths, default=0),
@@ -111,16 +159,20 @@ def measure():
     return metrics
 
 
+def metric_regressions(name, metrics, previous):
+    comparisons = [(metric, metrics[metric], previous[metric])
+                   for metric in ('max_length', 'complexity', 'wrappers')]
+    comparisons.extend((f'length >{limit}:', count, before)
+                       for limit, count, before in zip(LIMITS, metrics['length_tails'], previous['length_tails']))
+    return [f'{name}: {metric} {value} > {before}'
+            for metric, value, before in comparisons if value > before]
+
+
 def regressions(actual, baseline):
     failures = []
     for name, metrics in actual['files'].items():
         previous = baseline['files'].get(name, dict(max_length=0, length_tails=[0]*len(LIMITS), complexity=0, wrappers=0))
-        for metric in ('max_length', 'complexity', 'wrappers'):
-            if metrics[metric] > previous[metric]:
-                failures.append(f'{name}: {metric} {metrics[metric]} > {previous[metric]}')
-        for limit, count, before in zip(LIMITS, metrics['length_tails'], previous['length_tails']):
-            if count > before:
-                failures.append(f'{name}: length >{limit}: {count} > {before}')
+        failures.extend(metric_regressions(name, metrics, previous))
     for metric in ('litter', 'process_identifiers'):
         added = sorted(set(actual[metric]) - set(baseline[metric]))
         if added:
