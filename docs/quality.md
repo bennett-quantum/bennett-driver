@@ -821,7 +821,7 @@ execution; the exact commands and remaining frontiers are in the job evidence.
     },
     "tests/fixtures.rs": {
       "complexity": 0,
-      "functions": 29,
+      "functions": 30,
       "length_tails": [
         0,
         0,
@@ -830,7 +830,7 @@ execution; the exact commands and remaining frontiers are in the job evidence.
         0
       ],
       "max_length": 3,
-      "wrappers": 29
+      "wrappers": 30
     },
     "tests/fixtures/device_clock.c": {
       "complexity": 2,
@@ -1221,6 +1221,19 @@ execution; the exact commands and remaining frontiers are in the job evidence.
       ],
       "max_length": 47,
       "wrappers": 1
+    },
+    "tests/r_native_layout.py": {
+      "complexity": 14,
+      "functions": 3,
+      "length_tails": [
+        1,
+        1,
+        0,
+        0,
+        0
+      ],
+      "max_length": 70,
+      "wrappers": 2
     },
     "tests/reports.py": {
       "complexity": 37,
