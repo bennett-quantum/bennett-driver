@@ -101,6 +101,7 @@ impl std::fmt::Display for PluginArgument {
 }
 #[derive(Debug)]
 pub(super) struct Options {
+    pub(super) contract: Contract,
     pub(super) values: BTreeMap<OptionKey, String>,
     pub(super) paths: BTreeMap<OptionKey, PathBuf>,
     pub(super) sysroot: Option<Sysroot>,
@@ -116,6 +117,7 @@ pub(super) struct Options {
 impl Options {
     pub(super) fn parse(args: &[String]) -> Result<Self> {
         let mut o = Self {
+            contract: Contract::Published13,
             values: BTreeMap::new(),
             paths: BTreeMap::new(),
             sysroot: None,
@@ -210,14 +212,7 @@ impl Options {
             let out = path.join("native-work").display().to_string();
             o.values.insert(OptionKey::Out, out);
         }
-        if !matches!(o.get(OptionKey::Dialect), Some("0.2.10" | "0.2.13"))
-            || o.get(OptionKey::Isa).unwrap_or(ISA) != ISA
-        {
-            return Err(
-                "BD-E-VERSION: required dialect 0.2.13 (or explicit historical 0.2.10) and ISA 0.8"
-                    .into(),
-            );
-        }
+        o.contract = Contract::select(o.get(OptionKey::Dialect), o.get(OptionKey::Isa))?;
         if o.get(OptionKey::Out).is_none() || (o.inputs.is_empty() && !adapter) {
             return Err("BD-E-INPUT: -bennett-out and at least one input required".into());
         }
@@ -304,7 +299,10 @@ impl Options {
         self.values.get(&key).map(String::as_str)
     }
     pub(super) fn dialect(&self) -> &str {
-        self.get(OptionKey::Dialect).unwrap()
+        self.contract.versions().0
+    }
+    pub(super) fn isa(&self) -> &str {
+        self.contract.versions().1
     }
     pub(super) fn required_sysroot(&self) -> Result<&Sysroot> {
         self.sysroot.as_ref().ok_or_else(|| {

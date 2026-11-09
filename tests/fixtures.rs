@@ -66,6 +66,15 @@ mod dialect_profile {
     }
 }
 
+mod r_contract {
+    use super::support;
+
+    #[test]
+    fn classical_r_profile_preserves_publication_and_comparison_identities() {
+        support::fixture("r_contract.py");
+    }
+}
+
 mod environment {
     use super::support;
 
