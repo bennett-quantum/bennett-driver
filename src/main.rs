@@ -1,5 +1,6 @@
 mod arith;
 mod classifier;
+mod contract;
 mod json;
 mod launch_cli;
 mod llvm_utility;
@@ -20,8 +21,8 @@ use std::{
 };
 type Result<T> = std::result::Result<T, String>;
 const DIALECT: &str = "0.2.13";
-const ISA: &str = "0.8";
-const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.13 (historical 0.2.10 accepted explicitly) -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8,\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-arith-generator=FILE --bennett-native-check=FILE --bennett-sysroot=DIR\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n --bennett-snapshot=FILE --bennett-class=NAME --bennett-vscale=V\n -bennett-closed-unit --bennett-oracle=SYMBOL (requires callable wrapper handoff)\n --bennett-emit=process-bitcode (preparation stage; manifest status prepared)\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-comparison-entry=SYMBOL --bennett-comparison-launch-record=FILE\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n --bennett-classifier-input=FILE (original C, UBSan-minimal diagnostic)\n Plain O2 comparison and O0 diagnostic; full ASan requires its freestanding runtime publication\n Environment: TMPDIR is required. External paths also accept BENNETT_DRIVER_ followed by\n PLUGIN, RUNTIMES, ARITH, ARITH_GENERATOR, NATIVE_CHECK, NATIVE_SUPPORT or SYSROOT.\n";
+const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.13|0.2.10|0.3-r1 -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8 (0.2.x) or 0.9 (0.3-r1),\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-arith-generator=FILE --bennett-native-check=FILE --bennett-sysroot=DIR\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n --bennett-snapshot=FILE --bennett-class=NAME --bennett-vscale=V\n -bennett-closed-unit --bennett-oracle=SYMBOL (requires callable wrapper handoff)\n --bennett-emit=process-bitcode (preparation stage; manifest status prepared)\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-comparison-entry=SYMBOL --bennett-comparison-launch-record=FILE\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n --bennett-classifier-input=FILE (original C, UBSan-minimal diagnostic)\n Plain O2 comparison and O0 diagnostic; full ASan requires its freestanding runtime publication\n Environment: TMPDIR is required. External paths also accept BENNETT_DRIVER_ followed by\n PLUGIN, RUNTIMES, ARITH, ARITH_GENERATOR, NATIVE_CHECK, NATIVE_SUPPORT or SYSROOT.\n";
+use contract::Contract;
 use options::{Emission, OptionKey, Options, Tier};
 #[derive(Debug)]
 struct Sysroot {
@@ -236,19 +237,20 @@ fn close_libraries(
 fn tool(major: u32, name: &str) -> String {
     format!("/usr/lib/llvm-{major}/bin/{name}")
 }
-fn identity(b: &mut Build, plugin: &Path, major: u32, dialect: &str) -> Result<()> {
+fn identity(b: &mut Build, plugin: &Path, major: u32, contract: Contract) -> Result<()> {
     let id = b.run(
         "plugin-identity",
         vec![
             "python3".into(),
             "-c".into(),
-            include_str!("../scripts/plugin-identity.py").into(),
+            include_str!("plugin_identity.py").into(),
             plugin.display().to_string(),
             format!("/usr/lib/llvm-{major}/lib/libLLVM.so"),
+            contract.versions().0.into(),
         ],
         None,
     )?;
-    let expected = format!("dialect-{dialect};isa-{ISA}");
+    let expected = contract.identity();
     if id.trim() != expected {
         return Err(format!(
             "BD-E-VERSION: plugin identity {:?}, expected {expected}",
@@ -257,7 +259,8 @@ fn identity(b: &mut Build, plugin: &Path, major: u32, dialect: &str) -> Result<(
     }
     Ok(())
 }
-fn admit_dialect_flag(ir: &str, expected: &str) -> Result<()> {
+fn admit_dialect_flag(ir: &str, contract: Contract) -> Result<()> {
+    let expected = contract.versions().0;
     // This is opt's verified, canonical IR. Only tuples referenced by the
     // module-flags list are authoritative, not arbitrary debug metadata.
     if let Some(flags) = ir
@@ -274,12 +277,17 @@ fn admit_dialect_flag(ir: &str, expected: &str) -> Result<()> {
                 .lines()
                 .find_map(|line| line.strip_prefix(&prefix))
                 .ok_or("BD-E-VERSION: missing verified module-flag tuple")?;
-            if let Some((_, value)) = tuple.split_once(", !\"bennett.dialect\", ")
-                && value.trim_end_matches('}').trim() != format!("!\"{expected}\"")
-            {
-                return Err(format!(
-                    "BD-E-VERSION: bennett.dialect module flag {value} differs from {expected}"
-                ));
+            if let Some((behavior, value)) = tuple.split_once(", !\"bennett.dialect\", ") {
+                if value.trim_end_matches('}').trim() != format!("!\"{expected}\"") {
+                    return Err(format!(
+                        "BD-E-VERSION: bennett.dialect module flag {value} differs from {expected}"
+                    ));
+                }
+                // R-contract identity overrides, dialect §19.9. Historical
+                // module-flag admission remains unchanged.
+                if contract == Contract::ClassicalR && behavior != "!{i32 1" {
+                    return Err("BD-E-VERSION: §19.9 bennett.dialect module flag requires Error behavior for 0.3-r1".into());
+                }
             }
         }
     }
@@ -313,13 +321,10 @@ impl Environment {
         ] {
             b.record.set(key, artifact(p, o.get(pin))?);
         }
-        identity(b, &plugin, m, o.dialect())?;
+        identity(b, &plugin, m, o.contract)?;
         // Identity was obtained from the exported ABI, not a string search in the .so.
         let mut p = artifact(&plugin, None)?;
-        p.set(
-            "identity",
-            format!("dialect-{};isa-{ISA}", o.dialect()).into(),
-        );
+        p.set("identity", o.contract.identity().into());
         b.record.set("plugin", p);
         let mut versions = vec![];
         for name in ["clang", "llvm-link", "opt"] {
@@ -453,7 +458,7 @@ impl Environment {
             format!("-load-pass-plugin={}", plugin.display()),
             "-passes=bennett".into(),
             format!("-bennett-dialect={}", o.dialect()),
-            format!("-bennett-isa={ISA}"),
+            format!("-bennett-isa={}", o.isa()),
             format!("-bennett-out={}", b.out.display()),
         ];
         pass.extend(
@@ -624,7 +629,7 @@ fn admit_inputs(o: &Options, b: &mut Build, m: u32) -> Result<AdmittedInputs> {
             )
         })?;
         let text = read(&ir)?;
-        admit_dialect_flag(&text, o.get(OptionKey::Dialect).unwrap())?;
+        admit_dialect_flag(&text, o.contract)?;
         input_ir.push(ir.clone());
         for (key, previous) in [
             ("target datalayout", &mut layout),
@@ -782,17 +787,19 @@ fn main() {
             ));
         }
         fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+        let mut record = o.contract.record();
+        for (key, value) in [
+            ("schema", "bennett-driver-build-1".into()),
+            ("driver_version", env!("CARGO_PKG_VERSION").into()),
+            ("llvm_major", o.major.into()),
+            ("options", strings(&args)),
+        ] {
+            record.set(key, value);
+        }
         let mut b = Build {
             out,
             commands: vec![],
-            record: obj([
-                ("schema", "bennett-driver-build-1".into()),
-                ("driver_version", env!("CARGO_PKG_VERSION").into()),
-                ("dialect", o.dialect().into()),
-                ("isa", ISA.into()),
-                ("llvm_major", o.major.into()),
-                ("options", strings(&args)),
-            ]),
+            record,
         };
         let r = if o.get(OptionKey::Materialised).is_some() {
             native::compare(&o, &mut b)
@@ -1043,6 +1050,85 @@ mod tests {
         assert_eq!(options.emission, Emission::Artifact);
         assert_eq!(options.pipeline, "lto<O3>");
         assert_eq!(options.data_base, "4096");
+    }
+    #[test]
+    fn r_module_flag_requires_error_behavior_when_present() {
+        let flag = "!llvm.module.flags = !{!0}\n!0 = !{i32 2, !\"bennett.dialect\", !\"0.3-r1\"}\n";
+        assert!(admit_dialect_flag(flag, Contract::ClassicalR).is_err());
+        assert!(admit_dialect_flag(&flag.replace("i32 2", "i32 1"), Contract::ClassicalR).is_ok());
+        assert!(admit_dialect_flag("define void @f() { ret void }", Contract::ClassicalR).is_ok());
+    }
+    #[test]
+    fn r_failure_reports_keep_legacy_blockers_on_the_legacy_track() {
+        let fixture = test_support::Fixture::new("report-contract");
+        for (dialect, isa, legacy) in [
+            ("0.2.10", "0.8", true),
+            ("0.2.13", "0.8", true),
+            ("0.3-r1", "0.9", false),
+        ] {
+            for explicit in [false, true] {
+                let mut args = vec![
+                    format!("--bennett-dialect={dialect}"),
+                    "--bennett-tier=reversible".into(),
+                ];
+                if explicit {
+                    args.push(format!("-bennett-isa={isa}"));
+                }
+                report::failure(
+                    Some(&fixture.build.out),
+                    "BD-E-INPUT: test failure",
+                    "arguments",
+                    &args,
+                )
+                .unwrap();
+                let report = read(fixture.build.out.join("blockers.json")).unwrap();
+                assert_eq!(
+                    report.contains("BD-B-ISA7"),
+                    legacy,
+                    "{dialect}/{explicit}: {report}"
+                );
+            }
+        }
+    }
+    #[test]
+    fn classical_r_contract_selects_isa_without_changing_historical_tracks() {
+        for major in ["18", "23"] {
+            for (dialect, isa) in [("0.2.10", "0.8"), ("0.2.13", "0.8"), ("0.3-r1", "0.9")] {
+                for explicit in [false, true] {
+                    let mut args = vec![
+                        format!("-bennett-dialect={dialect}"),
+                        format!("--bennett-llvm-major={major}"),
+                        "-bennett-out=out".into(),
+                        "input.ll".into(),
+                    ];
+                    if explicit {
+                        args.push(format!("-bennett-isa={isa}"));
+                    }
+                    let result = Options::parse(&args);
+                    assert!(result.is_ok(), "{major}/{dialect}/{explicit}: {result:?}");
+                    let selected = result.unwrap();
+                    assert_eq!((selected.dialect(), selected.isa()), (dialect, isa));
+                }
+            }
+        }
+        for (dialect, isa) in [
+            ("0.3-r1", "0.8"),
+            ("0.2.13", "0.9"),
+            ("0.2.10", "0.9"),
+            ("0.3", "0.9"),
+            ("0.3-r1", "1.0"),
+        ] {
+            assert!(
+                parse(&[
+                    &format!("-bennett-dialect={dialect}"),
+                    &format!("-bennett-isa={isa}"),
+                    "-bennett-out=out",
+                    "input.ll"
+                ])
+                .unwrap_err()
+                .starts_with("BD-E-VERSION")
+            );
+        }
     }
     #[test]
     fn unknown_and_duplicate_options_fail() {

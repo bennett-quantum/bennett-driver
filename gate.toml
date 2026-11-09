@@ -83,8 +83,8 @@ outputs = ["build/libbennett-plugin-18.so", "build/libbennett-plugin-23.so"]
 needs = ["bennett-runtimes", "bennett-arith"]
 
 [siblings."bennett-dialect-spec"]
-sha = "e0456ee0e5ad514b4029d5458b3712b23f35242b"
-note = "pushed dialect publication provides spec/bennett_markers.h for device_models; its header blob 70ba398596631d0fb83adb2acbdf6b33ec76de98 is identical at local de5f939, so the unpushed 0.2.14 snapshot is unnecessary"
+sha = "687284fa28a79c536b3885cabec3adf5de26e031"
+note = "accepted classical R profile 0.3-r1: §§1.7, 19.9 and 23; historical 0.2.x publication retained"
 
 [siblings."bennett-isa-spec-review"]
 repo = "bennett-isa-spec"
@@ -96,3 +96,21 @@ name = "reference interpreter"
 cwd = "reference-interpreter"
 argv = ["cargo", "build", "--offline", "--release", "-j3"]
 outputs = ["reference-interpreter/target/release/bennett-isa-ref"]
+
+# Explicit R-contract producer; historical producers above retain their identities.
+[siblings."bennett-plugin-r-contract"]
+repo = "bennett-plugin"
+sha = "1bfe6613624bfd004b5dff649f9e4db8e1b07a44"
+note = "rung-3 classical R producer advertising dialect-0.3-r1;isa-0.9"
+
+[siblings."bennett-arith-r-contract"]
+repo = "bennett-arith"
+sha = "5e9b4509f3ee3f95ac9f7d22b43359e72cf9fdab"
+note = "arithmetic publication required by the R-contract producer build"
+
+[[siblings."bennett-plugin-r-contract".build]]
+name = "R-contract plugin (LLVM 18 and 23)"
+# Supply the producer's own arithmetic pin without moving historical consumers.
+argv = ["python3", "-c", "import os, pathlib, subprocess; layout=pathlib.Path('.tmp/producer-layout'); layout.mkdir(parents=True, exist_ok=True); dep=layout/'bennett-arith'; target=pathlib.Path('../bennett-arith-r-contract').resolve(); dep.symlink_to(target) if not dep.exists() else None; assert dep.resolve()==target; os.environ['BENNETT_GATE_LAYOUT']=str(layout.resolve()); subprocess.run(['python3','scripts/build'], check=True)"]
+outputs = ["build/libbennett-plugin-18.so", "build/libbennett-plugin-23.so"]
+needs = ["bennett-arith-r-contract"]

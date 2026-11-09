@@ -1,4 +1,20 @@
 use super::*;
+// Dialect §25.1 and ISA 0.9 K5/K6 retire ISA7 on the selected R track.
+// Reports also handle argument failures, before Options can be constructed.
+fn legacy_isa(args: &[String]) -> bool {
+    let values = args
+        .iter()
+        .filter_map(|arg| arg.trim_start_matches('-').split_once('='))
+        .collect::<BTreeMap<_, _>>();
+    let isa = values.get("bennett-isa").copied().unwrap_or_else(|| {
+        if values.get("bennett-dialect") == Some(&"0.3-r1") {
+            "0.9"
+        } else {
+            "0.8"
+        }
+    });
+    isa == "0.8"
+}
 /// Driver implementation refusals are distinct from the four normative ISA
 /// blockers. Keep the original diagnostics; never relabel a missing mode as ISA7.
 pub fn failure(out: Option<&Path>, error: &str, stage: &str, args: &[String]) -> Result<()> {
@@ -18,7 +34,9 @@ pub fn failure(out: Option<&Path>, error: &str, stage: &str, args: &[String]) ->
         } else {
             "DRIVER-INPUT"
         });
-    let (constraint, change) = if code == "BD-B-ISA7" || error.contains("BLK-5") {
+    let (constraint, change) = if legacy_isa(args)
+        && (code == "BD-B-ISA7" || error.contains("BLK-5"))
+    {
         (
             "ISA 0.8 R generic trap cannot report typed faults while retaining reversible prefix history; BLK-5 (ISA-7)",
             "R fault C and implicit trap-to-code table, as specified by ISA 0.9 K5; keep the accepted ISA target 0.8 until a contract upgrade",
@@ -74,7 +92,12 @@ pub fn failure(out: Option<&Path>, error: &str, stage: &str, args: &[String]) ->
     let mut rows = vec![row(code, error, constraint, change)];
     let mut text =
         format!("{code} <whole-program> <see diagnostic>: {error}; {constraint}; {change}\n");
-    if args.iter().any(|s| s.ends_with("bennett-tier=reversible")) && code != "BD-B-ISA7" {
+    if legacy_isa(args)
+        && args
+            .iter()
+            .any(|arg| arg.trim_start_matches('-') == "bennett-tier=reversible")
+        && code != "BD-B-ISA7"
+    {
         let reason = "§25.1: every §19.2 R entry has mandatory §17.6 budget checks; successful R paths are not waived";
         let constraint =
             "ISA 0.8 has only generic R trap; BLK-5 (ISA-7) typed R fault reporting is unavailable";

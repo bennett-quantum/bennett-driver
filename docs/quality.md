@@ -289,6 +289,12 @@ Only the eight owned source rows (main, launch CLI/library, manifest/provider
 loader and fixtures) were added/refreshed below. The pre-merge receipt is
 `git diff 8b1b4a1..HEAD -- docs/quality.md`; all other baseline rows are unchanged.
 
+The classical R compatibility update records only its owned rows: the explicit
+contract enum, isolated selected-profile identity query, profile-aware reports,
+and their focused fixtures. Historical pins and comparison static-link audits
+retain their existing tests. This receipt does not claim complete rung-3 native
+execution; the exact commands and remaining frontiers are in the job evidence.
+
 <!-- quality-baseline -->
 ```json
 {
@@ -397,6 +403,19 @@ loader and fixtures) were added/refreshed below. The pre-merge receipt is
       "max_length": 207,
       "wrappers": 0
     },
+    "src/contract.rs": {
+      "complexity": 4,
+      "functions": 5,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 12,
+      "wrappers": 1
+    },
     "src/json.rs": {
       "complexity": 15,
       "functions": 10,
@@ -489,10 +508,10 @@ loader and fixtures) were added/refreshed below. The pre-merge receipt is
       "wrappers": 0
     },
     "src/main.rs": {
-      "complexity": 202,
-      "functions": 38,
+      "complexity": 228,
+      "functions": 41,
       "length_tails": [
-        10,
+        12,
         7,
         2,
         0,
@@ -567,8 +586,8 @@ loader and fixtures) were added/refreshed below. The pre-merge receipt is
       "wrappers": 0
     },
     "src/options.rs": {
-      "complexity": 76,
-      "functions": 8,
+      "complexity": 75,
+      "functions": 9,
       "length_tails": [
         1,
         1,
@@ -576,8 +595,8 @@ loader and fixtures) were added/refreshed below. The pre-merge receipt is
         0,
         0
       ],
-      "max_length": 186,
-      "wrappers": 4
+      "max_length": 180,
+      "wrappers": 5
     },
     "src/output_paths.rs": {
       "complexity": 33,
@@ -590,6 +609,19 @@ loader and fixtures) were added/refreshed below. The pre-merge receipt is
         0
       ],
       "max_length": 32,
+      "wrappers": 0
+    },
+    "src/plugin_identity.py": {
+      "complexity": 5,
+      "functions": 0,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 0,
       "wrappers": 0
     },
     "src/process-entry.cpp": {
@@ -619,8 +651,8 @@ loader and fixtures) were added/refreshed below. The pre-merge receipt is
       "wrappers": 0
     },
     "src/report.rs": {
-      "complexity": 35,
-      "functions": 1,
+      "complexity": 40,
+      "functions": 2,
       "length_tails": [
         1,
         1,
@@ -628,7 +660,7 @@ loader and fixtures) were added/refreshed below. The pre-merge receipt is
         0,
         0
       ],
-      "max_length": 92,
+      "max_length": 99,
       "wrappers": 0
     },
     "tests/arith_conversions.py": {
@@ -789,7 +821,7 @@ loader and fixtures) were added/refreshed below. The pre-merge receipt is
     },
     "tests/fixtures.rs": {
       "complexity": 0,
-      "functions": 28,
+      "functions": 29,
       "length_tails": [
         0,
         0,
@@ -798,7 +830,7 @@ loader and fixtures) were added/refreshed below. The pre-merge receipt is
         0
       ],
       "max_length": 3,
-      "wrappers": 28
+      "wrappers": 29
     },
     "tests/fixtures/device_clock.c": {
       "complexity": 2,
@@ -1175,6 +1207,19 @@ loader and fixtures) were added/refreshed below. The pre-merge receipt is
         0
       ],
       "max_length": 13,
+      "wrappers": 1
+    },
+    "tests/r_contract.py": {
+      "complexity": 11,
+      "functions": 5,
+      "length_tails": [
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 47,
       "wrappers": 1
     },
     "tests/reports.py": {
