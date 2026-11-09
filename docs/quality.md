@@ -367,6 +367,71 @@ bennett-driver-9zg/7y4/ppz remain open. No full push gate was run.
       "max_length": 33,
       "wrappers": 7
     },
+    "src/launch.rs": {
+      "complexity": 27,
+      "functions": 16,
+      "length_tails": [
+        2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 39,
+      "wrappers": 2
+    },
+    "src/launch/manifest.rs": {
+      "complexity": 32,
+      "functions": 4,
+      "length_tails": [
+        2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 34,
+      "wrappers": 0
+    },
+    "src/launch/provider.rs": {
+      "complexity": 14,
+      "functions": 5,
+      "length_tails": [
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 27,
+      "wrappers": 0
+    },
+    "src/launch_cli.rs": {
+      "complexity": 36,
+      "functions": 4,
+      "length_tails": [
+        1,
+        1,
+        0,
+        0,
+        0
+      ],
+      "max_length": 60,
+      "wrappers": 0
+    },
+    "src/lib.rs": {
+      "complexity": 0,
+      "functions": 0,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 0,
+      "wrappers": 0
+    },
     "src/llvm_utility.rs": {
       "complexity": 20,
       "functions": 3,
@@ -381,7 +446,7 @@ bennett-driver-9zg/7y4/ppz remain open. No full push gate was run.
       "wrappers": 0
     },
     "src/main.rs": {
-      "complexity": 199,
+      "complexity": 202,
       "functions": 38,
       "length_tails": [
         10,
@@ -705,6 +770,19 @@ bennett-driver-9zg/7y4/ppz remain open. No full push gate was run.
       "max_length": 20,
       "wrappers": 0
     },
+    "tests/fixtures/loader-provider.c": {
+      "complexity": 31,
+      "functions": 13,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 12,
+      "wrappers": 2
+    },
     "tests/fixtures/r3-hello.c": {
       "complexity": 0,
       "functions": 1,
@@ -782,6 +860,19 @@ bennett-driver-9zg/7y4/ppz remain open. No full push gate was run.
       ],
       "max_length": 8,
       "wrappers": 1
+    },
+    "tests/loader.rs": {
+      "complexity": 25,
+      "functions": 16,
+      "length_tails": [
+        7,
+        1,
+        0,
+        0,
+        0
+      ],
+      "max_length": 81,
+      "wrappers": 2
     },
     "tests/merged_module.py": {
       "complexity": 4,

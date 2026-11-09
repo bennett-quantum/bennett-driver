@@ -1,6 +1,7 @@
 mod arith;
 mod classifier;
 mod json;
+mod launch_cli;
 mod llvm_utility;
 mod mode_preparation;
 mod native;
@@ -746,8 +747,18 @@ fn finalise_build(b: &Build) -> Result<()> {
 }
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
+    if args.first().is_some_and(|arg| arg == "--launch-estimate") {
+        if let Err(error) = launch_cli::run(&args[1..]) {
+            eprintln!("bennett-driver: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     if args == ["--help"] {
         print!("{HELP}");
+        println!(
+            "Alias-aware startup: --launch-estimate --provider=LIB --root=NAME --object=FILE --region=SYMBOL --target=JCS_FILE --budget=STEPS,HEAP,STACK,DEPTH --variant=NAME --controls=N --params=JCS_FILE --aliases=JCS_FILE --certificate=NEW_FILE [--next-root ...]"
+        );
         return;
     }
     if args == ["--version"] {
