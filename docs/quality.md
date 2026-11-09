@@ -246,6 +246,49 @@ unchanged gate pins; implementation `b6d789a`):
 The nonblocking bennett-driver-mqb and publication obligations
 bennett-driver-9zg/7y4/ppz remain open. No full push gate was run.
 
+K91 startup/shim evidence (ISA contract `618b16f`, implementation `a3833e3`):
+`cargo test --offline -j4 --test loader driver_startup_command -- --nocapture`
+was red against the old driver: `--launch-estimate` had no startup path.
+The final `cargo test --offline -j4 -- --test-threads=4` passes in **70.39 s**
+wall (**111.60 s** user, **86.25 s** system), including 11 loader fixtures and
+two compile-fail lifetime examples; the six existing ignored cases retain
+their explicit switches. `cargo fmt --all --check`,
+`cargo clippy --offline -j4 --all-targets -- -D warnings` and
+`python3 -B scripts/quality.py` pass. Headless commands use job-local temporary
+and Cargo target directories. Width 4 is derived with shared-host headroom
+from 64 threads and about 52 GiB available memory. Focused/default command
+guards use the earlier measured suite times above with at least 10x headroom;
+a guard trip is UNKNOWN. No full push gate was run by the implementation job.
+
+Independent public-C-ABI fixture providers exercise both role manifests,
+malformed/unsupported manifests, absent queries/features/required exports,
+original query/request statuses, concurrent and repeated byte-identical queries,
+provider reload, all five three-position partitions, separate root/provider
+bindings, fresh equal-tuple handles and native-program/token forwarding with
+revocation. Abort-on-effect fixtures make compatibility bypass observable.
+Five deliberate mutations (skip manifest validation, skip required-symbol
+validation, discard query status, erase the partition, allow cross-root tokens)
+all fail their named tests; restored code passes. The lifetime examples fail
+specifically with E0505 when dropping the borrowed provider/program.
+These fixtures verify loader transport and dispatch, not VM estimation semantics.
+
+Reader audit: the new startup path writes the provider certificate bytes
+unchanged and never inserts manifests or process handles into artifacts.
+Its certificate accessor transports opaque bytes and does not attest an
+independent checker. The existing plugin native adapter, layout/ELF reader and
+build finaliser remain on the separately selected ISA 0.8 compilation/comparison
+path; layout ABI 1 and launch-record validation confer no K91 support. No
+scheduler request dispatcher participates in this startup; separately selected
+scheduler adapters must use their own role negotiation, including both required
+exports. Full native-container packaging and run/tape integration remain in
+bennett-driver-b0r/kcc under bennett-4ht. The startup command and embeddable shim
+retain separate bindings per selected device root and impose no records on
+native main, argv/envp or host libc.
+
+Only the eight owned source rows (main, launch CLI/library, manifest/provider
+loader and fixtures) were added/refreshed below. The pre-merge receipt is
+`git diff 8b1b4a1..HEAD -- docs/quality.md`; all other baseline rows are unchanged.
+
 <!-- quality-baseline -->
 ```json
 {
