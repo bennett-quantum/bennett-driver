@@ -1,7 +1,7 @@
 # Push-gate pins (bennett/tools/gate_README.md). Siblings resolve only to these commits.
 schema = 1
 repo = "bennett-driver"
-tool_sha = "3779522887ace6426f8ba13fb0d55b625b781941"
+tool_sha = "a630f3861426b8b08bcb0725abd2f5cd5dd70a06"
 timeout_s = 7200
 
 [env]
@@ -88,8 +88,8 @@ note = "pushed dialect publication provides spec/bennett_markers.h for device_mo
 
 [siblings."bennett-isa-spec-review"]
 repo = "bennett-isa-spec"
-sha = "8d9a5c60aff9aa35b44eb3ac1c541c020f24d737"
-note = "reference interpreter oracle for the promised device-model test"
+sha = "618b16f805aa26244dd2cfa74938d1394a21ce57"
+note = "ISA 0.9 K91 loader negotiation contract and reference interpreter oracle"
 
 [[siblings."bennett-isa-spec-review".build]]
 name = "reference interpreter"
