@@ -103,8 +103,14 @@ repo = "bennett-plugin"
 sha = "1bfe6613624bfd004b5dff649f9e4db8e1b07a44"
 note = "rung-3 classical R producer advertising dialect-0.3-r1;isa-0.9"
 
+[siblings."bennett-arith-r-contract"]
+repo = "bennett-arith"
+sha = "5e9b4509f3ee3f95ac9f7d22b43359e72cf9fdab"
+note = "arithmetic publication required by the R-contract producer build"
+
 [[siblings."bennett-plugin-r-contract".build]]
 name = "R-contract plugin (LLVM 18 and 23)"
-argv = ["python3", "scripts/build"]
+# Supply the producer's own arithmetic pin without moving historical consumers.
+argv = ["python3", "-c", "import os, pathlib, subprocess; layout=pathlib.Path('.tmp/producer-layout'); layout.mkdir(parents=True, exist_ok=True); dep=layout/'bennett-arith'; target=pathlib.Path('../bennett-arith-r-contract').resolve(); dep.symlink_to(target) if not dep.exists() else None; assert dep.resolve()==target; os.environ['BENNETT_GATE_LAYOUT']=str(layout.resolve()); subprocess.run(['python3','scripts/build'], check=True)"]
 outputs = ["build/libbennett-plugin-18.so", "build/libbennett-plugin-23.so"]
-needs = ["bennett-runtimes", "bennett-arith"]
+needs = ["bennett-arith-r-contract"]
