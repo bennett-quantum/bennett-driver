@@ -52,6 +52,8 @@ option_keys! {
     LayoutTextBase => "bennett-layout-text-base",
     LlvmMajor => "bennett-llvm-major",
     Materialised => "bennett-materialised",
+    NativeProvider => "bennett-native-provider",
+    NativeTarget => "bennett-native-target",
     NativeBackend => "bennett-native-backend",
     NativeCheck => "bennett-native-check",
     NativeInput => "bennett-native-input",
@@ -150,6 +152,8 @@ impl Options {
                 let pass = matches!(
                     key,
                     OptionKey::BudgetDefault
+                        | OptionKey::LayoutDataBase
+                        | OptionKey::LayoutTextBase
                         | OptionKey::AnalysisBudgetMs
                         | OptionKey::Budgets
                         | OptionKey::Tier
@@ -241,7 +245,9 @@ impl Options {
             && o.values.keys().any(|k| {
                 matches!(
                     k,
-                    OptionKey::NativeInput
+                    OptionKey::NativeProvider
+                        | OptionKey::NativeTarget
+                        | OptionKey::NativeInput
                         | OptionKey::NativeBackend
                         | OptionKey::NativeSupport
                         | OptionKey::NativeSupportSha256
@@ -253,8 +259,6 @@ impl Options {
                         | OptionKey::ComparisonLaunchRecord
                         | OptionKey::ComparisonRecord
                         | OptionKey::ComparisonOutput
-                        | OptionKey::LayoutDataBase
-                        | OptionKey::LayoutTextBase
                 )
             })
         {
@@ -275,10 +279,20 @@ impl Options {
             OptionKey::ArithGenerator,
             OptionKey::NativeCheck,
             OptionKey::NativeSupport,
+            OptionKey::NativeProvider,
+            OptionKey::NativeTarget,
         ] {
             if let Some(path) = resolve_path(&o, key)? {
                 o.paths.insert(key, path);
             }
+        }
+        if o.paths.contains_key(&OptionKey::NativeTarget)
+            != o.paths.contains_key(&OptionKey::NativeProvider)
+        {
+            return Err(
+                "BD-E-CONFIG: select both --bennett-native-provider and --bennett-native-target"
+                    .into(),
+            );
         }
         o.sysroot = resolve_path(&o, OptionKey::Sysroot)?
             .map(Sysroot::new)

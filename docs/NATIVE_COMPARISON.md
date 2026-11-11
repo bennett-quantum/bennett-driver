@@ -75,11 +75,10 @@ test. It never silently replaces historical expected outputs.
 Current actual-component tests prepare/check/finalise real produced marked
 entries, verify original module/record hashes, reject wrong entry/plugin pins,
 and require the real `bennett_qreg_new/free` imports rather than fake source
-marker definitions. The strict freestanding link currently lacks that real
-launch backend (`bennett-driver-r1p`). The backend must load the actual selected
-ISA object, call the report's `binding_symbol` with an owned live
-`bennett_program_t`, and preserve register state, class and clean-free faults.
-The producer's hosted CRT/VM DSO example does not certify this startup path.
+marker definitions. The isolated provider profile below supplies owned startup and real launch/qreg
+calls while the component keeps the strict freestanding link. Select the actual
+provider and target explicitly; program binding and lifetime are evidenced per
+execution. The producer's hosted example alone does not certify this driver path.
 
 Resolved native ELF addresses must still be supplied to the production layout
 and verified against source correspondence. Explicit nonempty global/region mappings are supported and audited as described
@@ -162,3 +161,77 @@ legacy reports without the handoff retain the explicit-map route. The linker
 section assertions and independent ELF address/size/alignment audit still apply.
 This association establishes storage correspondence; the selected R component
 also requires its real program binding and startup lifecycle.
+
+## Isolated hosted launch provider
+
+The reviewed dialect §17.7 boundary in publication
+`9bbf6dee3ab6ce94030e01a1af98df28fe19e683` permits a genuine launch provider
+in an isolated hosted domain. Select it explicitly:
+
+```sh
+bennett-driver --bennett-llvm-major=18 -bennett-dialect=0.3-r1 -bennett-isa=0.9 \
+  --bennett-materialised=production/device.bc --bennett-comparison-entry=top \
+  --bennett-plugin=PLUGIN --bennett-runtimes=RUNTIMES --bennett-arith=ARITH \
+  --bennett-sysroot=SYSROOT --bennett-native-provider=libbennett_vm.so \
+  --bennett-native-target=TARGET_JCS --bennett-layout-data-base=65536 \
+  --bennett-out=comparison
+```
+
+The target must be the canonical target document accepted by the public launch
+API. Use the same data/text placement when producing the ISA object. On a host
+that forbids mapping the first 64 KiB, the producer's published
+`--bennett-layout-data-base=65536` option supplies that common layout. The driver
+fails on mapping collisions or a different returned mapping; it never relocates
+an already produced object or edits its device layout.
+
+The driver emits a freestanding static `native-O0.component`/`native-O2.component`
+and a hosted launcher at the usual executable path. The component retains the
+matching-major runtime/arithmetic closure, checks, fixed device-global ranges,
+heap boundary and linker/ELF assertions. Dedicated comparison-only sections
+prevent MC string pooling from coalescing mapped storage. This changes storage
+attributes in the comparison copy after adaptation while preserving global
+initialisers and the original materialised artifact. Native-only
+shadow-stack and backend bookkeeping occupy a separate segment after text,
+outside the device's declared global/heap ranges. The component is readable
+and deliberately lacks standalone execute permission; the launcher owns startup.
+
+The hosted PIE bootstrap maps those ELF segments at their exact addresses and
+loads the provider using `dlmopen(LM_ID_NEWLM, ..., RTLD_NOW | RTLD_LOCAL)`.
+The component is not registered with the dynamic linker. Provider/libc symbol
+resolution therefore cannot substitute for its materialised/runtime/arithmetic
+functions; component calls to the launch API use an explicit driver gateway.
+That gateway forwards to the genuine provider functions. The bootstrap loads
+the authenticated selected ISA object through `bennett_load`, passes its real
+live program to the exact binding symbol, invokes the selected native entry,
+and calls `bennett_unload` after component execution and cleanup.
+
+An explicit native input defining C `main` can call the selected component with
+its required arguments. Otherwise the generated caller invokes the selected
+entry directly using its C process ABI. A supplied binding relocation alone
+never establishes startup or lifetime; a reversible comparison without the
+provider configuration stops before code generation. The sjn reference-only
+control verifies this. Native process exit and typed-fault signals are observed
+at the component boundary so the provider can be unloaded; their actual status,
+stdout/stderr and signal outcome are preserved. For normalised exit, comparison
+instrumentation checks the published §14.4/§14.7 EH record at protected control
+boundaries. Active4 transfers its stored selector through the driver bootstrap
+after the actual runtime cleanup and EH writes. This realises the non-returning
+exit instead of spinning in the normaliser's unreachable continuation. Original
+instructions and cleanup stay in the comparison copy; the immutable producer
+artifact is not changed. Other EH selectors retain their original handling.
+
+The provider plan and per-variant configuration bind the component, bootstrap,
+original materialisation/launch identities, target and provider. They separately
+hash the provider's and bootstrap's transitive library closures. Each execution
+checks these hashes, verifies the actually loaded provider namespace/closure,
+and writes `native-O*.runtime.json` with binding/entry/unload outcomes and real
+qreg allocation/free successes. Failed execution cannot reuse an old successful
+receipt. A linked build record says execution is pending; the runtime receipt
+and actual comparison observations provide execution evidence.
+
+`native_startup` executes real marked allocation/clean free/return7, an allocator
+isolation witness, typed-fault cleanup, real provider dirty-free rejection, the
+unused-binding control, immutable
+input checks, and the unmodified musl hello workload on LLVM18/23 at O0/O2.
+Full freestanding ASan, complete function-address correspondence and broader
+mixed-container acceptance retain their separate outstanding obligations.

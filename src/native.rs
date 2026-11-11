@@ -96,6 +96,9 @@ impl Comparison {
                 .unwrap_or(b.out.join("native-O2")),
         )?;
         let materialisation = native_adapter::Adapter::select(o, m, &device)?;
+        if native_provider::enabled(o) && materialisation.is_none() {
+            return Err("BD-E-NATIVE-PROVIDER: isolated provider requires a selected authenticated comparison entry".into());
+        }
         let mut protected = vec![device.clone(), runtime.clone(), arith.clone()];
         output_paths::recorded_artifacts(&b.record, &mut protected);
         output_paths::published_artifacts(&b.out, &mut protected)?;
@@ -109,6 +112,8 @@ impl Comparison {
         for key in [
             OptionKey::NativeInput,
             OptionKey::NativeBackend,
+            OptionKey::NativeProvider,
+            OptionKey::NativeTarget,
             OptionKey::ClassifierInput,
             OptionKey::ComparisonLayout,
             OptionKey::Budgets,
@@ -153,6 +158,7 @@ impl Comparison {
         ] {
             destinations.push((name, b.out.join(name)));
         }
+        destinations.extend(native_provider::destinations(o, b, &exe));
         output_paths::admit(&protected, &destinations)?;
         Ok(Self {
             m,
@@ -352,15 +358,12 @@ impl Comparison {
             artifact(support, o.get(OptionKey::NativeSupportSha256))?,
         );
         let config = self.resolve_layout(o, b)?;
-        let native_source = if let Some(adapter) = &materialisation {
-            let finalised = adapter.run(b, m, native_adapter::Phase::Finalise, checked)?;
-            self.require_startup(o, b, &adapter.entry)?;
-            finalised
-        } else {
-            checked.clone()
-        };
+        let (native_source, gateway) = self.finalised_source(o, b, checked)?;
         let adapted = b.out.join("comparison-adapted.bc");
         let mut support_link = vec![tool(m, "llvm-link"), native_source.display().to_string()];
+        if let Some(gateway) = gateway {
+            support_link.push(gateway.display().to_string());
+        }
         // Startup support stays outside checked producer/harness bodies.
         support_link.extend([
             config.display().to_string(),
@@ -448,6 +451,11 @@ impl Comparison {
             let host = adapter.run(b, m, native_adapter::Phase::HostImports, &closed)?;
             fs::copy(host, &closed).map_err(|error| format!("native host imports: {error}"))?;
         }
+        let closed = if native_provider::enabled(o) {
+            native_provider::sections(o, b, &closed)?
+        } else {
+            closed
+        };
         audit_markers(b, m, &closed)?;
         let imports = b.run(
             "native-import-audit",
@@ -465,6 +473,24 @@ impl Comparison {
             .map(String::from)
             .collect();
         Ok(NativeProgram { closed, residual })
+    }
+    fn finalised_source(
+        &self,
+        o: &Options,
+        b: &mut Build,
+        checked: &Path,
+    ) -> Result<(PathBuf, Option<PathBuf>)> {
+        let Some(adapter) = &self.materialisation else {
+            return Ok((checked.to_path_buf(), None));
+        };
+        let finalised = adapter.run(b, o.major, native_adapter::Phase::Finalise, checked)?;
+        let gateway = if native_provider::enabled(o) {
+            Some(native_provider::prepare(o, b, adapter)?)
+        } else {
+            self.require_startup(o, b, &adapter.entry)?;
+            None
+        };
+        Ok((finalised, gateway))
     }
     fn resolve_layout(&self, o: &Options, b: &mut Build) -> Result<PathBuf> {
         let (report, receipt, entry) = self.materialisation.as_ref().map_or_else(
@@ -495,6 +521,11 @@ impl Comparison {
                 report,
                 receipt,
                 entry,
+                if native_provider::enabled(o) {
+                    "isolated-provider-1".into()
+                } else {
+                    "".into()
+                },
             ],
             None,
         )?;
@@ -515,18 +546,14 @@ impl Comparison {
         );
         Ok(config)
     }
-    fn require_startup(&self, o: &Options, b: &mut Build, entry: &str) -> Result<()> {
+    fn require_startup(&self, _o: &Options, b: &mut Build, entry: &str) -> Result<()> {
         let binding = Self::startup_binding(b)?;
         let binding = binding.trim();
         if binding.is_empty() {
             return Ok(());
         }
-        if let Some(key) = self.startup_input(o, b, binding)? {
-            Self::record_startup(b, binding, key);
-            return Ok(());
-        }
         Err(format!(
-            "BD-E-NATIVE-STARTUP: §17.7/§19.5 selected R entry {} requires a real launch/startup component that loads the actual ISA object, calls {binding} with its live bennett_program_t before entry, and retains that program. No supplied native input/backend references this binding; R shadow-stack/source-step initialisation is missing. No fake program binding or host libc/libm fallback is permitted",
+            "BD-E-NATIVE-STARTUP: §17.7/§19.5 selected R entry {} requires a real launch/startup component that loads the actual ISA object, calls {binding} with its live bennett_program_t before entry, and retains that program. Select --bennett-native-provider and --bennett-native-target for owned load/bind/entry/unload startup. Supplied C inputs or unused binding relocations do not establish a live-program lifetime. No fake program binding or host libc/libm fallback is permitted",
             entry
         ))
     }
@@ -541,52 +568,6 @@ impl Comparison {
             ],
             None,
         )
-    }
-    fn startup_input(
-        &self,
-        o: &Options,
-        b: &mut Build,
-        binding: &str,
-    ) -> Result<Option<OptionKey>> {
-        for key in [OptionKey::NativeInput, OptionKey::NativeBackend]
-            .into_iter()
-            .filter(|key| o.get(*key).is_some())
-        {
-            if self.references_startup(b, key, binding)? {
-                return Ok(Some(key));
-            }
-        }
-        Ok(None)
-    }
-    fn references_startup(&self, b: &mut Build, key: OptionKey, binding: &str) -> Result<bool> {
-        b.run(
-            "native-startup-imports",
-            vec![
-                tool(self.m, "llvm-nm"),
-                "--undefined-only".into(),
-                b.out.join(format!("{key}.bc")).display().to_string(),
-            ],
-            None,
-        )
-        .map(|imports| {
-            imports
-                .lines()
-                .filter_map(|line| line.split_whitespace().last())
-                .any(|symbol| symbol == binding)
-        })
-    }
-    fn record_startup(b: &mut Build, binding: &str, key: OptionKey) {
-        b.record.set(
-            "native_startup",
-            obj([
-                (
-                    "status",
-                    "binding reference present; lifecycle not certified".into(),
-                ),
-                ("binding_symbol", binding.into()),
-                ("component", key.as_str().into()),
-            ]),
-        );
     }
     fn source_inputs(
         &self,
@@ -696,6 +677,7 @@ impl Comparison {
             ..
         } = checked;
         let NativeProgram { closed, residual } = program;
+        let component = native_provider::component(o, output);
         let script = b.out.join("comparison.ld");
         // Keep checked source IR fixed. Only machine-code optimisation differs
         // between the comparison and diagnostic variants.
@@ -738,7 +720,7 @@ impl Comparison {
                 b.out.join(format!("native-{level}.map")).display()
             ),
             "-o".into(),
-            output.display().to_string(),
+            component.display().to_string(),
         ]);
         let record = obj([
             ("schema", "bennett-driver-native-comparison-1".into()),
@@ -782,6 +764,7 @@ impl Comparison {
     }
     fn execute_variant(
         &self,
+        o: &Options,
         b: &mut Build,
         level: &str,
         output: &Path,
@@ -791,7 +774,20 @@ impl Comparison {
         match b.run(&format!("native-{level}"), argv, None) {
             Ok(_) => {
                 record.set("status", "linked".into());
-                self.audit_variant(b, output)?;
+                let component = native_provider::component(o, output);
+                self.audit_variant(b, &component)?;
+                if native_provider::enabled(o) {
+                    native_provider::wrap(b, output, &component)?;
+                    record.set("profile", "bennett-driver-isolated-provider-1".into());
+                    record.set("component", artifact(&component, None)?);
+                    record.set(
+                        "provider_config",
+                        artifact(
+                            &PathBuf::from(format!("{}.provider-config.json", output.display())),
+                            None,
+                        )?,
+                    );
+                }
                 record.set("sha256", sha(output)?.into());
                 Ok(None)
             }
@@ -851,7 +847,7 @@ impl Comparison {
             let (argv, mut record) =
                 self.prepare_variant(o, b, checked, program, sysroot, (level, &output))?;
             self.write_primary_record(level, &record)?;
-            let error = self.execute_variant(b, level, &output, argv, &mut record)?;
+            let error = self.execute_variant(o, b, level, &output, argv, &mut record)?;
             first_error = first_error.or(error);
             self.write_primary_record(level, &record)?;
             results.push(record);
