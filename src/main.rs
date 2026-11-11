@@ -451,6 +451,9 @@ impl Environment {
             ],
             None,
         )?;
+        if o.contract == Contract::ClassicalR && o.tier == Some(Tier::Reversible) {
+            process::bind_initialisation(b, m, &post)?;
+        }
         let mut pass = vec![
             tool(m, "opt"),
             format!("-load-pass-plugin={}", plugin.display()),
