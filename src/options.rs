@@ -25,6 +25,7 @@ option_keys! {
     AnalysisBudgetMs => "bennett-analysis-budget-ms",
     ArenaHeap => "bennett-arena-heap",
     ArgvReplies => "bennett-argv-replies",
+    ProcessArguments => "bennett-process-arguments",
     Arith => "bennett-arith",
     ArithGenerator => "bennett-arith-generator",
     Bind => "bennett-bind",
@@ -259,9 +260,7 @@ impl Options {
         {
             return Err("BD-E-INPUT: comparison options require --bennett-comparison=true or --bennett-materialised".into());
         }
-        if o.get(OptionKey::ArgvReplies).is_some() && o.get(OptionKey::Tier) != Some("reversible") {
-            return Err("BD-E-INPUT: argv replies require --bennett-tier=reversible".into());
-        }
+        o.check_process_arguments()?;
         if let Some(tier) = o.get(OptionKey::Tier) {
             if tier != "reversible" || o.get(OptionKey::Entry).is_none() {
                 return Err("BD-E-INPUT: §19.2 requires --bennett-tier=reversible and --bennett-entry=SYMBOL".into());
@@ -294,6 +293,23 @@ impl Options {
         o.pipeline = o.get(OptionKey::Pipeline).unwrap_or("lto<O3>").into();
         o.data_base = o.get(OptionKey::LayoutDataBase).unwrap_or("4096").into();
         Ok(o)
+    }
+    fn check_process_arguments(&self) -> Result<()> {
+        if (self.get(OptionKey::ArgvReplies).is_some()
+            || self.get(OptionKey::ProcessArguments).is_some())
+            && self.get(OptionKey::Tier) != Some("reversible")
+        {
+            return Err(
+                "BD-E-INPUT: process arguments/argv replies require --bennett-tier=reversible"
+                    .into(),
+            );
+        }
+        if self.get(OptionKey::ArgvReplies).is_some()
+            && self.get(OptionKey::ProcessArguments).is_some()
+        {
+            return Err("BD-E-INPUT: choose process arguments or explicit argv replies".into());
+        }
+        Ok(())
     }
     pub(super) fn get(&self, key: OptionKey) -> Option<&str> {
         self.values.get(&key).map(String::as_str)

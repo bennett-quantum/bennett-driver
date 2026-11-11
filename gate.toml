@@ -100,7 +100,7 @@ note = "ISA 0.9 K91 loader negotiation contract and reference interpreter oracle
 name = "reference interpreter"
 cwd = "reference-interpreter"
 argv = ["cargo", "build", "--offline", "--release", "-j3"]
-outputs = ["reference-interpreter/target/release/bennett-isa-ref"]
+outputs = ["reference-interpreter/target/release/bennett-isa-ref", "reference-interpreter/target/release/libbennett_isa_ref.rlib"]
 
 # Explicit R-contract producer; historical producers above retain their identities.
 [siblings."bennett-plugin-r-contract"]

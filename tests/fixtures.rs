@@ -75,6 +75,15 @@ mod r_contract {
     }
 }
 
+mod r_process_arguments {
+    use super::support;
+
+    #[test]
+    fn published_r_process_arguments_survive_preparation_exit_and_reversal() {
+        support::fixture("r_process_arguments.py");
+    }
+}
+
 mod r_native_layout {
     use super::support;
 
