@@ -182,6 +182,18 @@ mod native_memory {
     }
 }
 
+mod native_startup {
+    use super::support;
+    #[test]
+    fn isolated_real_provider_owns_binding_registers_and_lifetime() {
+        support::fixture("native_startup.py");
+    }
+    #[test]
+    fn full_driver_process_retains_the_shared_layout_and_owned_startup() {
+        support::fixture("native_process_startup.py");
+    }
+}
+
 mod native_symbols {
     use super::support;
 

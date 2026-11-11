@@ -109,8 +109,9 @@ def read_layout(device,explicit):
         layout=layouts[0]
     return layout
 
-def prepare(out,device,explicit,data_arg,text_arg,report='',receipt='',entry=''):
+def prepare(out,device,explicit,data_arg,text_arg,report='',receipt='',entry='',private=''):
     out,device=pathlib.Path(out),pathlib.Path(device)
+    if private not in ('','isolated-provider-1'):fail('unknown private native storage profile')
     layout=read_layout(device,explicit)
     if type(layout) is not dict or type(layout['globals']) is not dict or type(layout['interface_regions']) is not dict:fail('malformed global/interface layout')
     apply_handoff(layout,device,report,receipt,entry)
@@ -126,6 +127,7 @@ def prepare(out,device,explicit,data_arg,text_arg,report='',receipt='',entry='')
         end=start+max(1,size)
         if start<4096 or end>=2**63 or (start<base+limit and end>base):fail('mapped range overlaps null/heap or overflows: '+key)
         symbol=value['native_symbol'];quoted(symbol)
+        if private and 'native_section' not in value:value['native_section']='.bennett.native.'+str(len(bindings))
         llvm=value.get('llvm_name',symbol)
         sections=[value['native_section']] if 'native_section' in value else [prefix+llvm for prefix in ('.data.','.bss.','.rodata.')]
         for section in sections:quoted(section)
@@ -149,9 +151,13 @@ def prepare(out,device,explicit,data_arg,text_arg,report='',receipt='',entry='')
     if text<end or text<=data or text%0x200000:fail('text must follow all device ranges on a 2MiB boundary')
     if any(x['base']<data for x in bindings):fail('mapped range precedes native data base')
     layout['native_bindings']=bindings
+    if private:layout['native_private_storage']='separate provider-profile segment; device-global and heap ranges unchanged'
     (out/'resolved-layout.json').write_text(json.dumps(layout,sort_keys=True,separators=(',',':'))+'\n')
     (out/'native-layout.ll').write_text('target triple = "x86_64-unknown-linux-musl"\n'
         f'@__bennett_rt_native_layout = constant {{ i64, i64, i64 }} {{ i64 1, i64 {base}, i64 {limit} }}, align 8\n')
+    (out/'comparison.ld').write_text(linker_script(bindings,base,limit,data,text,private))
+
+def linker_script(bindings,base,limit,data,text,private):
     def section(index,binding):
         name='.bennett_mapped_'+str(index);symbol=quoted(binding['native_symbol'])
         selection=' '.join(quoted(x) for x in binding['sections'])
@@ -164,20 +170,29 @@ def prepare(out,device,explicit,data_arg,text_arg,report='',receipt='',entry='')
     low=''.join(section(i,b) for i,b in enumerate(bindings) if b['base']<base)
     high=''.join(section(i,b) for i,b in enumerate(bindings) if b['base']>=base+limit)
     regions_header=' native_regions PT_LOAD FLAGS(6);' if high else ''
-    (out/'comparison.ld').write_text(f'''PHDRS {{ native_data PT_LOAD FLAGS(6);{regions_header} native_text PT_LOAD FLAGS(5); }}
+    ordinary=''' .rodata : { *(.rodata .rodata.*) } :native_data
+ .data : { *(.data .data.*) *(.init_array*) *(.fini_array*) } :native_data
+ .bss : { *(.bss .bss.*) *(COMMON) } :native_data'''
+    private_header=''
+    private_storage=''
+    if private:
+        private_header=' native_private PT_LOAD FLAGS(6);'
+        private_storage=''' . = ALIGN(., 4096);
+ .native_private : { *(.rodata .rodata.*) *(.data .data.*) *(.init_array*) *(.fini_array*) *(.bss .bss.*) *(COMMON) } :native_private'''
+        ordinary=''
+    return f'''PHDRS {{ native_data PT_LOAD FLAGS(6);{regions_header} native_text PT_LOAD FLAGS(5);{private_header} }}
 SECTIONS {{
  . = {data};
 {low} __bennett_comparison_low_start = .;
 {high} . = __bennett_comparison_low_start;
- .rodata : {{ *(.rodata .rodata.*) }} :native_data
- .data : {{ *(.data .data.*) *(.init_array*) *(.fini_array*) }} :native_data
- .bss : {{ *(.bss .bss.*) *(COMMON) }} :native_data
+{ordinary}
  __bennett_comparison_data_end = .;
  ASSERT(ALIGN(., 4096) == {base}, "BD-E-NATIVE-LAYOUT: native data end differs from resolved device heap base")
  . = {text}; .text : {{ *(.text .text.*) }} :native_text
+{private_storage}
  /DISCARD/ : {{ *(.eh_frame*) *(.comment) *(.note*) }}
 }}
-''')
+'''
 
 try:
     if sys.argv[1]=='--audit':audit(*sys.argv[2:])

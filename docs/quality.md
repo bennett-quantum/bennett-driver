@@ -320,6 +320,31 @@ the first CLI attempt hit its 180-second guard and provided no execution result.
 No product execution checks or assertions were removed. The update is restricted
 to these seven changed/new source rows.
 
+The isolated-provider implementation follows reviewed dialect §17.7 at
+`9bbf6de`. Its baseline records the new driver gateway, fixed-address ELF
+bootstrap, namespace/dependency/lifetime audits, and two real-provider fixtures.
+The original runtime/arithmetic component keeps its static link and range
+assertions. Native-only bookkeeping has a separate segment; exact global
+sections disable string pooling without changing the producer artifact.
+Comparison exit polling realises the published EH exit transfer after actual
+cleanup, while retaining original instructions and leaving other selectors
+unchanged. Function/call attributes are adjusted for the added native checks.
+The CLI also forwards the existing shared layout options to explicit R-contract production;
+historical producer invocations retain their prior flags. The compatibility
+guard was verified against the unchanged output-path collision matrix.
+The update is restricted to these fifteen changed/new source rows.
+
+Focused verification: the first LLVM18 O0 marked root allocates and clean-frees
+one real VM qubit and returns7. The expanded matrix executes both majors/O0/O2,
+actual musl hello, the full driver process with buffered `tailbye` output and
+exit7, the unused-binding rejection, immutable/hash controls, and source-fault
+cleanup. A dirty-precondition control sets a real VM register via the public
+prepare API then calls its actual free: backend status7 becomes fault4, and
+program unload succeeds. Source qprep/gate materialisation failures remain a
+separate producer followup, not passing source-operation evidence. Tests retain
+all outcome/lifetime assertions. Execution guard trips are UNKNOWN; timed-out
+children are cleaned by process groups and bootstrap parent-death handling.
+
 <!-- quality-baseline -->
 ```json
 {
@@ -351,17 +376,43 @@ to these seven changed/new source rows.
       "wrappers": 4
     },
     "scripts/native-layout.py": {
-      "complexity": 130,
-      "functions": 12,
+      "complexity": 135,
+      "functions": 13,
       "length_tails": [
-        2,
+        3,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 47,
+      "wrappers": 0
+    },
+    "scripts/native-provider-plan.py": {
+      "complexity": 27,
+      "functions": 4,
+      "length_tails": [
+        1,
         1,
         0,
         0,
         0
       ],
-      "max_length": 69,
-      "wrappers": 0
+      "max_length": 52,
+      "wrappers": 1
+    },
+    "scripts/native-provider-run.py": {
+      "complexity": 18,
+      "functions": 5,
+      "length_tails": [
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 39,
+      "wrappers": 1
     },
     "scripts/pinned_siblings.py": {
       "complexity": 14,
@@ -533,7 +584,7 @@ to these seven changed/new source rows.
       "wrappers": 0
     },
     "src/main.rs": {
-      "complexity": 221,
+      "complexity": 223,
       "functions": 41,
       "length_tails": [
         12,
@@ -572,12 +623,12 @@ to these seven changed/new source rows.
       "wrappers": 0
     },
     "src/native.rs": {
-      "complexity": 140,
-      "functions": 35,
+      "complexity": 150,
+      "functions": 33,
       "length_tails": [
-        6,
-        4,
-        2,
+        7,
+        5,
+        3,
         0,
         0
       ],
@@ -597,6 +648,45 @@ to these seven changed/new source rows.
       "max_length": 80,
       "wrappers": 0
     },
+    "src/native_bootstrap.c": {
+      "complexity": 180,
+      "functions": 10,
+      "length_tails": [
+        3,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 44,
+      "wrappers": 0
+    },
+    "src/native_component.c": {
+      "complexity": 15,
+      "functions": 3,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 14,
+      "wrappers": 0
+    },
+    "src/native_component_adapt.cpp": {
+      "complexity": 67,
+      "functions": 3,
+      "length_tails": [
+        2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 40,
+      "wrappers": 0
+    },
     "src/native_host.rs": {
       "complexity": 14,
       "functions": 1,
@@ -610,8 +700,34 @@ to these seven changed/new source rows.
       "max_length": 72,
       "wrappers": 0
     },
+    "src/native_provider.rs": {
+      "complexity": 32,
+      "functions": 6,
+      "length_tails": [
+        2,
+        1,
+        1,
+        0,
+        0
+      ],
+      "max_length": 113,
+      "wrappers": 1
+    },
+    "src/native_provider_api.h": {
+      "complexity": 0,
+      "functions": 0,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 0,
+      "wrappers": 0
+    },
     "src/options.rs": {
-      "complexity": 79,
+      "complexity": 80,
       "functions": 10,
       "length_tails": [
         1,
@@ -620,7 +736,7 @@ to these seven changed/new source rows.
         0,
         0
       ],
-      "max_length": 178,
+      "max_length": 190,
       "wrappers": 5
     },
     "src/output_paths.rs": {
@@ -846,7 +962,7 @@ to these seven changed/new source rows.
     },
     "tests/fixtures.rs": {
       "complexity": 0,
-      "functions": 31,
+      "functions": 33,
       "length_tails": [
         0,
         0,
@@ -855,7 +971,7 @@ to these seven changed/new source rows.
         0
       ],
       "max_length": 3,
-      "wrappers": 31
+      "wrappers": 33
     },
     "tests/fixtures/device_clock.c": {
       "complexity": 2,
@@ -882,6 +998,19 @@ to these seven changed/new source rows.
       ],
       "max_length": 12,
       "wrappers": 2
+    },
+    "tests/fixtures/native_dirty_provider.c": {
+      "complexity": 7,
+      "functions": 2,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 10,
+      "wrappers": 0
     },
     "tests/fixtures/r3-hello.c": {
       "complexity": 0,
@@ -1078,6 +1207,19 @@ to these seven changed/new source rows.
       "max_length": 4,
       "wrappers": 2
     },
+    "tests/native_process_startup.py": {
+      "complexity": 8,
+      "functions": 1,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 11,
+      "wrappers": 0
+    },
     "tests/native_scalar.py": {
       "complexity": 14,
       "functions": 2,
@@ -1115,6 +1257,19 @@ to these seven changed/new source rows.
         0
       ],
       "max_length": 4,
+      "wrappers": 2
+    },
+    "tests/native_startup.py": {
+      "complexity": 46,
+      "functions": 13,
+      "length_tails": [
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 30,
       "wrappers": 2
     },
     "tests/native_symbols.py": {

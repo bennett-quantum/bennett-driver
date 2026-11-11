@@ -88,8 +88,8 @@ outputs = ["build/libbennett-plugin-18.so", "build/libbennett-plugin-23.so"]
 needs = ["bennett-runtimes", "bennett-arith"]
 
 [siblings."bennett-dialect-spec"]
-sha = "687284fa28a79c536b3885cabec3adf5de26e031"
-note = "accepted classical R profile 0.3-r1: §§1.7, 19.9 and 23; historical 0.2.x publication retained"
+sha = "9bbf6dee3ab6ce94030e01a1af98df28fe19e683"
+note = "reviewed §17.7 isolated hosted launch-provider boundary, plus accepted classical R profile 0.3-r1; historical profiles retained"
 
 [siblings."bennett-isa-spec-review"]
 repo = "bennett-isa-spec"
@@ -119,3 +119,18 @@ name = "R-contract plugin (LLVM 18 and 23)"
 argv = ["python3", "-c", "import os, pathlib, subprocess; layout=pathlib.Path('.tmp/producer-layout'); layout.mkdir(parents=True, exist_ok=True); dep=layout/'bennett-arith'; target=pathlib.Path('../bennett-arith-r-contract').resolve(); dep.symlink_to(target) if not dep.exists() else None; assert dep.resolve()==target; os.environ['BENNETT_GATE_LAYOUT']=str(layout.resolve()); subprocess.run(['python3','scripts/build'], check=True)"]
 outputs = ["build/libbennett-plugin-18.so", "build/libbennett-plugin-23.so"]
 needs = ["bennett-arith-r-contract"]
+
+[siblings."bennett-native-provider"]
+repo = "bennett-vm"
+sha = "55cdc8c04b776684a44bec2b0058f309ed5a7d36"
+note = "existing genuine C launch provider; hosted in an isolated linker namespace under dialect §17.7"
+
+[[siblings."bennett-native-provider".build]]
+name = "native launch-provider library"
+argv = ["cargo", "build", "--offline", "--lib", "-j3"]
+outputs = ["target/debug/libbennett_vm.so"]
+
+[siblings."bennett-native-targets"]
+repo = "bennett-targets"
+sha = "dd036711936c496f53f6f1a9bebeb686335bf7cc"
+note = "ideal target document for actual native-provider launch tests"
