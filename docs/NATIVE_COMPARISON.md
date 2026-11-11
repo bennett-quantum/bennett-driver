@@ -180,7 +180,8 @@ bennett-driver --bennett-llvm-major=18 -bennett-dialect=0.3-r1 -bennett-isa=0.9 
 The target must be the canonical target document accepted by the public launch
 API. Use the same data/text placement when producing the ISA object. On a host
 that forbids mapping the first 64 KiB, the producer's published
-`--bennett-layout-data-base=65536` option supplies that common layout. The driver
+`--bennett-layout-data-base=65536` option supplies that common layout. The driver forwards these layout options to the explicit `0.3-r1` producer;
+historical profiles retain their earlier invocation. The driver
 fails on mapping collisions or a different returned mapping; it never relocates
 an already produced object or edits its device layout.
 

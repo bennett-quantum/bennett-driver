@@ -329,7 +329,9 @@ sections disable string pooling without changing the producer artifact.
 Comparison exit polling realises the published EH exit transfer after actual
 cleanup, while retaining original instructions and leaving other selectors
 unchanged. Function/call attributes are adjusted for the added native checks.
-The CLI also forwards the existing shared layout options to production.
+The CLI also forwards the existing shared layout options to explicit R-contract production;
+historical producer invocations retain their prior flags. The compatibility
+guard was verified against the unchanged output-path collision matrix.
 The update is restricted to these fifteen changed/new source rows.
 
 Focused verification: the first LLVM18 O0 marked root allocates and clean-frees
@@ -582,7 +584,7 @@ children are cleaned by process groups and bootstrap parent-death handling.
       "wrappers": 0
     },
     "src/main.rs": {
-      "complexity": 221,
+      "complexity": 223,
       "functions": 41,
       "length_tails": [
         12,

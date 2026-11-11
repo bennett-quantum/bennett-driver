@@ -466,7 +466,11 @@ impl Environment {
                     !matches!(
                         arg.key,
                         OptionKey::Class | OptionKey::Vscale | OptionKey::Snapshot
-                    )
+                    ) && (o.contract == Contract::ClassicalR
+                        || !matches!(
+                            arg.key,
+                            OptionKey::LayoutDataBase | OptionKey::LayoutTextBase
+                        ))
                 })
                 .map(ToString::to_string),
         );
