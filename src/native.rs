@@ -113,6 +113,7 @@ impl Comparison {
             OptionKey::ComparisonLayout,
             OptionKey::Budgets,
             OptionKey::ArgvReplies,
+            OptionKey::ProcessArguments,
             OptionKey::Disk,
         ] {
             if let Some(path) = o.get(key) {

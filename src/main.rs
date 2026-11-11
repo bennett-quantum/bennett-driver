@@ -21,7 +21,7 @@ use std::{
 };
 type Result<T> = std::result::Result<T, String>;
 const DIALECT: &str = "0.2.13";
-const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.13|0.2.10|0.3-r1 -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8 (0.2.x) or 0.9 (0.3-r1),\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-arith-generator=FILE --bennett-native-check=FILE --bennett-sysroot=DIR\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n --bennett-snapshot=FILE --bennett-class=NAME --bennett-vscale=V\n -bennett-closed-unit --bennett-oracle=SYMBOL (requires callable wrapper handoff)\n --bennett-emit=process-bitcode (preparation stage; manifest status prepared)\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-comparison-entry=SYMBOL --bennett-comparison-launch-record=FILE\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n --bennett-classifier-input=FILE (original C, UBSan-minimal diagnostic)\n Plain O2 comparison and O0 diagnostic; full ASan requires its freestanding runtime publication\n Environment: TMPDIR is required. External paths also accept BENNETT_DRIVER_ followed by\n PLUGIN, RUNTIMES, ARITH, ARITH_GENERATOR, NATIVE_CHECK, NATIVE_SUPPORT or SYSROOT.\n";
+const HELP: &str = "bennett-driver: external whole-program LLVM driver\nRequired: -bennett-dialect=0.2.13|0.2.10|0.3-r1 -bennett-out=DIR INPUT.{c,bc,ll}...\nOptions: --bennett-llvm-major=18|23 (default 23), -bennett-isa=0.8 (0.2.x) or 0.9 (0.3-r1),\n --bennett-plugin=FILE --bennett-runtimes=FILE --bennett-arith=FILE\n --bennett-arith-generator=FILE --bennett-native-check=FILE --bennett-sysroot=DIR\n --bennett-{plugin,runtimes,arith}-sha256=HEX --bennett-pipeline=lto<O3>\n --bennett-tier=reversible --bennett-entry=SYMBOL\n --bennett-snapshot=FILE --bennett-class=NAME --bennett-vscale=V\n -bennett-closed-unit --bennett-oracle=SYMBOL (requires callable wrapper handoff)\n --bennett-emit=process-bitcode (preparation stage; manifest status prepared)\n -bennett-budget-default=s,h,st,d,ss -bennett-budgets=FILE\n --bennett-comparison=true or --bennett-materialised=DIR/device.bc\n --bennett-comparison-layout=FILE (resolved layout; defaults to adjacent launches)\n --bennett-comparison-entry=SYMBOL --bennett-comparison-launch-record=FILE\n --bennett-native-support=FILE --bennett-native-support-sha256=HEX\n --bennett-native-input=FILE --bennett-comparison-record=FILE\n --bennett-process-arguments=FILE (argv/envp byte vectors for R launch replies)\n --bennett-classifier-input=FILE (original C, UBSan-minimal diagnostic)\n Plain O2 comparison and O0 diagnostic; full ASan requires its freestanding runtime publication\n Environment: TMPDIR is required. External paths also accept BENNETT_DRIVER_ followed by\n PLUGIN, RUNTIMES, ARITH, ARITH_GENERATOR, NATIVE_CHECK, NATIVE_SUPPORT or SYSROOT.\n";
 use contract::Contract;
 use options::{Emission, OptionKey, Options, Tier};
 #[derive(Debug)]
@@ -339,19 +339,16 @@ impl Environment {
             versions.push((name, v.into()));
         }
         b.record.set("tools", obj(versions));
-        if let Some(file) = o.get(OptionKey::Budgets) {
-            b.record
-                .set("budget_input", artifact(&absolute(file)?, None)?);
-        }
-        if let Some(file) = o.get(OptionKey::ArgvReplies) {
-            b.record
-                .set("argv_replies", artifact(&absolute(file)?, None)?);
-        }
-        if let Some(file) = o.get(OptionKey::Disk) {
-            b.record.set("disk", artifact(&absolute(file)?, None)?);
-        }
-        if let Some(file) = o.get(OptionKey::Snapshot) {
-            b.record.set("snapshot", artifact(&absolute(file)?, None)?);
+        for (key, role) in [
+            (OptionKey::Budgets, "budget_input"),
+            (OptionKey::ArgvReplies, "argv_replies"),
+            (OptionKey::ProcessArguments, "process_arguments"),
+            (OptionKey::Disk, "disk"),
+            (OptionKey::Snapshot, "snapshot"),
+        ] {
+            if let Some(file) = o.get(key) {
+                b.record.set(role, artifact(&absolute(file)?, None)?);
+            }
         }
         Ok(Self {
             m,

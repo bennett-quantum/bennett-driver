@@ -306,6 +306,20 @@ only those three files to account for these checks; `read_layout`,
 the previous maxima. The linker extent/address assertions and ELF audit remain
 unchanged.
 
+The R process-input consumer adds explicit argv/envp byte serialization and
+validation in `scripts/finalise-build.py`, selected by the published build
+protocol. Finalization is a callable function so independent codec tests can
+check both pointer widths, exact offsets, raw bytes and malformed replies.
+`src/options.rs` validates the two input channels and `src/main.rs` records their
+hashes through one artifact table. The baseline adds the full driver process
+fixture, its codec controls and the small oracle adapter that links the pinned
+reference library binary. That adapter uses the public run/reply/reverse API and
+checks the unchanged complete process, exact console/status, both host requests
+and complete state restoration. It avoids the CLI's per-instruction memory trace;
+the first CLI attempt hit its 180-second guard and provided no execution result.
+No product execution checks or assertions were removed. The update is restricted
+to these seven changed/new source rows.
+
 <!-- quality-baseline -->
 ```json
 {
@@ -324,16 +338,16 @@ unchanged.
       "wrappers": 3
     },
     "scripts/finalise-build.py": {
-      "complexity": 14,
-      "functions": 4,
+      "complexity": 34,
+      "functions": 13,
       "length_tails": [
-        0,
+        1,
         0,
         0,
         0,
         0
       ],
-      "max_length": 1,
+      "max_length": 40,
       "wrappers": 4
     },
     "scripts/native-layout.py": {
@@ -519,11 +533,11 @@ unchanged.
       "wrappers": 0
     },
     "src/main.rs": {
-      "complexity": 228,
+      "complexity": 221,
       "functions": 41,
       "length_tails": [
         12,
-        7,
+        6,
         2,
         0,
         0
@@ -597,8 +611,8 @@ unchanged.
       "wrappers": 0
     },
     "src/options.rs": {
-      "complexity": 75,
-      "functions": 9,
+      "complexity": 79,
+      "functions": 10,
       "length_tails": [
         1,
         1,
@@ -606,7 +620,7 @@ unchanged.
         0,
         0
       ],
-      "max_length": 180,
+      "max_length": 178,
       "wrappers": 5
     },
     "src/output_paths.rs": {
@@ -832,7 +846,7 @@ unchanged.
     },
     "tests/fixtures.rs": {
       "complexity": 0,
-      "functions": 30,
+      "functions": 31,
       "length_tails": [
         0,
         0,
@@ -841,7 +855,7 @@ unchanged.
         0
       ],
       "max_length": 3,
-      "wrappers": 30
+      "wrappers": 31
     },
     "tests/fixtures/device_clock.c": {
       "complexity": 2,
@@ -893,6 +907,19 @@ unchanged.
         0
       ],
       "max_length": 5,
+      "wrappers": 0
+    },
+    "tests/fixtures/r_process_reference.rs": {
+      "complexity": 1,
+      "functions": 2,
+      "length_tails": [
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 38,
       "wrappers": 0
     },
     "tests/hook.py": {
@@ -1194,6 +1221,19 @@ unchanged.
       "max_length": 4,
       "wrappers": 1
     },
+    "tests/process_arguments_codec.py": {
+      "complexity": 9,
+      "functions": 5,
+      "length_tails": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 21,
+      "wrappers": 0
+    },
     "tests/process_runtime_apis.py": {
       "complexity": 6,
       "functions": 1,
@@ -1245,6 +1285,19 @@ unchanged.
       ],
       "max_length": 59,
       "wrappers": 2
+    },
+    "tests/r_process_arguments.py": {
+      "complexity": 10,
+      "functions": 6,
+      "length_tails": [
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 29,
+      "wrappers": 1
     },
     "tests/reports.py": {
       "complexity": 37,

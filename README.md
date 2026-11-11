@@ -44,7 +44,9 @@ never overwritten when an output directory is already populated.
 
 `--bennett-tier=reversible --bennett-entry=SYMBOL` selects process preparation;
 `--bennett-emit=process-bitcode` stops at the explicitly labelled preparation
-stage. The accepted ISA 0.8 producer can emit `BD-B-ISA7` for required typed
+stage. [Process argument inputs](docs/PROCESS_ARGUMENTS.md) supply argv/envp bytes
+through the published R byte-import service and receipt-bound executor replies.
+The accepted ISA 0.8 producer can emit `BD-B-ISA7` for required typed
 reversible fault handling. A blocked component run is not full acceptance.
 Snapshots, class tables and fixed vscale have driver preparation stages; configured
 classes, descriptor device models, oracle entry ownership and remaining backend
