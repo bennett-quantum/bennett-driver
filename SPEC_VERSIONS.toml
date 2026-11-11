@@ -6,3 +6,4 @@ isa = "0.8"
 [commits]
 "bennett-dialect-spec" = "e0456ee0e5ad514b4029d5458b3712b23f35242b"
 "bennett-dialect-spec-historical" = "023f5a771a814270634db3be9cfde88ded69f975"
+"bennett-dialect-spec-r-contract" = "9bbf6dee3ab6ce94030e01a1af98df28fe19e683"
