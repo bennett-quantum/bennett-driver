@@ -79,7 +79,7 @@ mod r_native_layout {
     use super::support;
 
     #[test]
-    fn published_r_globals_without_native_mapping_fail_loudly() {
+    fn published_r_globals_preserve_authenticated_native_mapping() {
         support::fixture("r_native_layout.py");
     }
 }
