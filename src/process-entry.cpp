@@ -17,7 +17,7 @@ static int fail(const Twine &message) {
 
 int main(int argc, char **argv) {
   bool audit = argc == 4 && StringRef(argv[1]) == "--verify";
-  if (!audit && argc != 5)
+  if (!audit && argc != 5 && argc != 6)
     return fail("expected INPUT.bc OUTPUT.bc ENTRY REPORT.json or --verify INPUT.bc ENTRY");
   LLVMContext context;
   SMDiagnostic diagnostic;
@@ -80,6 +80,10 @@ int main(int argc, char **argv) {
   };
   auto *emptyArgv = makeEmpty(".bennett.driver.empty.argv");
   auto *emptyEnvp = makeEmpty(".bennett.driver.empty.envp");
+  if (argc == 6) {
+    Metadata *vectors[] = {ValueAsMetadata::get(emptyArgv), ValueAsMetadata::get(emptyEnvp)};
+    m.getOrInsertNamedMetadata("bennett.driver.process_vectors")->addOperand(MDNode::get(context, vectors));
+  }
   auto *null = ConstantPointerNull::get(ptr);
 
   // Bytewise volatile validation has no arbitrary vector/string length cap.
@@ -169,6 +173,11 @@ int main(int argc, char **argv) {
                          StringRef("program_invocation_short_name")}) {
     auto *state = m.getOrInsertGlobal(name, ptr);
     b.CreateLoad(ptr, state)->setVolatile(true);
+  }
+  if (argc == 6) {
+    auto initialise=m.getOrInsertFunction(argv[5],FunctionType::get(voidTy,false));
+    b.CreateCall(initialise,{});
+    wrapper->addFnAttr("bennett.driver.init-fini","1");
   }
   SmallVector<Value *, 3> forwarded;
   if (params) forwarded = {count, actualArgv};

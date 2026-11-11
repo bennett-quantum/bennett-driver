@@ -345,6 +345,14 @@ separate producer followup, not passing source-operation evidence. Tests retain
 all outcome/lifetime assertions. Execution guard trips are UNKNOWN; timed-out
 children are cleaned by process groups and bootstrap parent-death handling.
 
+The process init/fini link component adds an external LLVM inventory/binding tool,
+post-LTO integration and startup dispatch. Its new baseline records those added
+responsibilities and the priority/order, section-view, COMDAT, fixed-address,
+native cleanup and reference reversal regressions. Existing thresholds, metric
+implementation, source scope and all prior tests are retained. The functional
+fixture was red before the implementation; both LLVM majors now execute the real
+callbacks through native O0/O2 and restore the full reference process state.
+
 <!-- quality-baseline -->
 ```json
 {
@@ -442,7 +450,7 @@ children are cleaned by process groups and bootstrap parent-death handling.
     },
     "scripts/quality.py": {
       "complexity": 79,
-      "functions": 6,
+      "functions": 12,
       "length_tails": [
         2,
         0,
@@ -584,7 +592,7 @@ children are cleaned by process groups and bootstrap parent-death handling.
       "wrappers": 0
     },
     "src/main.rs": {
-      "complexity": 223,
+      "complexity": 226,
       "functions": 41,
       "length_tails": [
         12,
@@ -741,7 +749,7 @@ children are cleaned by process groups and bootstrap parent-death handling.
     },
     "src/output_paths.rs": {
       "complexity": 33,
-      "functions": 3,
+      "functions": 4,
       "length_tails": [
         1,
         0,
@@ -749,7 +757,7 @@ children are cleaned by process groups and bootstrap parent-death handling.
         0,
         0
       ],
-      "max_length": 32,
+      "max_length": 28,
       "wrappers": 0
     },
     "src/plugin_identity.py": {
@@ -766,7 +774,7 @@ children are cleaned by process groups and bootstrap parent-death handling.
       "wrappers": 0
     },
     "src/process-entry.cpp": {
-      "complexity": 38,
+      "complexity": 41,
       "functions": 2,
       "length_tails": [
         1,
@@ -775,20 +783,33 @@ children are cleaned by process groups and bootstrap parent-death handling.
         0,
         0
       ],
-      "max_length": 182,
+      "max_length": 191,
       "wrappers": 0
     },
-    "src/process.rs": {
-      "complexity": 17,
-      "functions": 1,
+    "src/process-init-fini.cpp": {
+      "complexity": 193,
+      "functions": 17,
       "length_tails": [
-        1,
+        2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 38,
+      "wrappers": 2
+    },
+    "src/process.rs": {
+      "complexity": 26,
+      "functions": 2,
+      "length_tails": [
+        2,
         1,
         1,
         0,
         0
       ],
-      "max_length": 103,
+      "max_length": 106,
       "wrappers": 0
     },
     "src/report.rs": {
@@ -897,7 +918,7 @@ children are cleaned by process groups and bootstrap parent-death handling.
     },
     "tests/comparison.py": {
       "complexity": 21,
-      "functions": 1,
+      "functions": 3,
       "length_tails": [
         0,
         0,
@@ -962,7 +983,7 @@ children are cleaned by process groups and bootstrap parent-death handling.
     },
     "tests/fixtures.rs": {
       "complexity": 0,
-      "functions": 33,
+      "functions": 34,
       "length_tails": [
         0,
         0,
@@ -971,7 +992,7 @@ children are cleaned by process groups and bootstrap parent-death handling.
         0
       ],
       "max_length": 3,
-      "wrappers": 33
+      "wrappers": 34
     },
     "tests/fixtures/device_clock.c": {
       "complexity": 2,
@@ -985,6 +1006,19 @@ children are cleaned by process groups and bootstrap parent-death handling.
       ],
       "max_length": 20,
       "wrappers": 0
+    },
+    "tests/fixtures/init_fini_reference.rs": {
+      "complexity": 1,
+      "functions": 2,
+      "length_tails": [
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 35,
+      "wrappers": 1
     },
     "tests/fixtures/loader-provider.c": {
       "complexity": 31,
@@ -1063,6 +1097,19 @@ children are cleaned by process groups and bootstrap parent-death handling.
       ],
       "max_length": 0,
       "wrappers": 0
+    },
+    "tests/init_fini.py": {
+      "complexity": 26,
+      "functions": 7,
+      "length_tails": [
+        2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "max_length": 39,
+      "wrappers": 1
     },
     "tests/input_headers.py": {
       "complexity": 34,
@@ -1183,7 +1230,7 @@ children are cleaned by process groups and bootstrap parent-death handling.
     },
     "tests/native_materialisation.py": {
       "complexity": 18,
-      "functions": 2,
+      "functions": 5,
       "length_tails": [
         0,
         0,
@@ -1286,7 +1333,7 @@ children are cleaned by process groups and bootstrap parent-death handling.
       "wrappers": 0
     },
     "tests/output_paths.py": {
-      "complexity": 8,
+      "complexity": 7,
       "functions": 0,
       "length_tails": [
         0,
@@ -1404,7 +1451,7 @@ children are cleaned by process groups and bootstrap parent-death handling.
     },
     "tests/quality.py": {
       "complexity": 2,
-      "functions": 11,
+      "functions": 21,
       "length_tails": [
         0,
         0,

@@ -46,6 +46,8 @@ never overwritten when an output directory is already populated.
 `--bennett-emit=process-bitcode` stops at the explicitly labelled preparation
 stage. [Process argument inputs](docs/PROCESS_ARGUMENTS.md) supply argv/envp bytes
 through the published R byte-import service and receipt-bound executor replies.
+[Process initialization](docs/PROCESS_INITIALISATION.md) binds actual constructor
+and finalizer arrays and their linker boundaries before materialisation.
 The accepted ISA 0.8 producer can emit `BD-B-ISA7` for required typed
 reversible fault handling. A blocked component run is not full acceptance.
 Snapshots, class tables and fixed vscale have driver preparation stages; configured

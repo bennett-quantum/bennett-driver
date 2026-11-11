@@ -19,17 +19,17 @@ pub fn prepare(
         llvm_utility::compile(b, major, "process-entry", include_str!("process-entry.cpp"))?;
     let output = b.out.join("process-entry.bc");
     let report = b.out.join("process-entry.json");
-    b.run(
-        "process-entry",
-        vec![
-            executable.display().to_string(),
-            module.display().to_string(),
-            output.display().to_string(),
-            entry.into(),
-            report.display().to_string(),
-        ],
-        None,
-    )?;
+    let mut synthesis = vec![
+        executable.display().to_string(),
+        module.display().to_string(),
+        output.display().to_string(),
+        entry.into(),
+        report.display().to_string(),
+    ];
+    if o.contract == Contract::ClassicalR {
+        synthesis.push(".bennett.driver.run.init".into());
+    }
+    b.run("process-entry", synthesis, None)?;
     b.run(
         "process-runtime-link",
         vec![
@@ -50,6 +50,9 @@ pub fn prepare(
         module,
         &[runtime, arith],
     )?;
+    if o.contract == Contract::ClassicalR && o.emission == Emission::ProcessBitcode {
+        bind_initialisation(b, major, module)?;
+    }
     let definitions = b.run(
         "process-root-audit",
         vec![
@@ -103,4 +106,35 @@ pub fn prepare(
         ]),
     );
     b.save("running")
+}
+
+// Bind the selected link inventory after LTO, before device materialisation.
+pub fn bind_initialisation(b: &mut Build, major: u32, module: &Path) -> Result<()> {
+    let tool = llvm_utility::compile(
+        b,
+        major,
+        "process-init-fini",
+        include_str!("process-init-fini.cpp"),
+    )?;
+    let bound = b.out.join("process-init-fini.bc");
+    let facts = b.out.join("process-init-fini.json");
+    b.run(
+        "process-init-fini",
+        vec![
+            tool.display().to_string(),
+            module.display().to_string(),
+            bound.display().to_string(),
+            facts.display().to_string(),
+        ],
+        None,
+    )?;
+    fs::copy(&bound, module).map_err(|error| format!("BD-E-PROCESS-LINK: {error}"))?;
+    b.record.set(
+        "process_initialisation",
+        obj([
+            ("module", artifact(&bound, None)?),
+            ("report", artifact(&facts, None)?),
+        ]),
+    );
+    Ok(())
 }

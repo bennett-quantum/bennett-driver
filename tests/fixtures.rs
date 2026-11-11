@@ -182,6 +182,14 @@ mod native_memory {
     }
 }
 
+mod init_fini {
+    use super::support;
+    #[test]
+    fn actual_init_fini_arrays_preserve_priority_storage_and_cleanup() {
+        support::fixture("init_fini.py");
+    }
+}
+
 mod native_startup {
     use super::support;
     #[test]
