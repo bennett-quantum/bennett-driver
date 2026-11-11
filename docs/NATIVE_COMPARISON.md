@@ -145,3 +145,20 @@ arena at O0/O2 on both majors. This removes the old categorical nonempty-layout
 refusal; a selected producer/ISA/native full comparison still requires the real
 backend, complete source-map construction and invocation verification described
 above.
+
+## Published R device globals
+
+For the receipt-bound R producer, the driver reads the preparation report's
+`device_globals` association by ISA global ID. It verifies the selected entry,
+materialised, launch-record, build and launch hashes, then matches each published
+source key to exactly one global symbol row. The inventory, fixed base and size
+must agree with the authenticated build and launch layout. Missing, duplicated,
+stale or conflicting associations fail before native layout generation.
+
+The resulting native alias, LLVM storage name and alignment annotate only the
+driver's `resolved-layout.json`. The ISA objects and producer publication remain
+unchanged. Explicit adapter annotations must agree with this correspondence;
+legacy reports without the handoff retain the explicit-map route. The linker
+section assertions and independent ELF address/size/alignment audit still apply.
+This association establishes storage correspondence; the selected R component
+also requires its real program binding and startup lifecycle.

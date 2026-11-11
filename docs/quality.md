@@ -295,6 +295,17 @@ and their focused fixtures. Historical pins and comparison static-link audits
 retain their existing tests. This receipt does not claim complete rung-3 native
 execution; the exact commands and remaining frontiers are in the job evidence.
 
+The R global correspondence consumer adds receipt/build/launch authentication,
+complete device-global and unique source-symbol checks, and conflicting-map
+rejections in `scripts/native-layout.py`. `src/native.rs` passes the selected
+preparation report, launch record and entry to that layout step. The positive
+R fixture also exercises altered publication bytes, stale identities, missing
+or inconsistent associations and explicit-map conflicts. The baseline updates
+only those three files to account for these checks; `read_layout`,
+`resolve_layout` and the fixture assertion helpers keep function lengths within
+the previous maxima. The linker extent/address assertions and ELF audit remain
+unchanged.
+
 <!-- quality-baseline -->
 ```json
 {
@@ -326,16 +337,16 @@ execution; the exact commands and remaining frontiers are in the job evidence.
       "wrappers": 4
     },
     "scripts/native-layout.py": {
-      "complexity": 89,
-      "functions": 7,
+      "complexity": 130,
+      "functions": 12,
       "length_tails": [
-        1,
+        2,
         1,
         0,
         0,
         0
       ],
-      "max_length": 78,
+      "max_length": 69,
       "wrappers": 0
     },
     "scripts/pinned_siblings.py": {
@@ -547,16 +558,16 @@ execution; the exact commands and remaining frontiers are in the job evidence.
       "wrappers": 0
     },
     "src/native.rs": {
-      "complexity": 138,
-      "functions": 13,
+      "complexity": 140,
+      "functions": 35,
       "length_tails": [
-        5,
+        6,
         4,
-        3,
+        2,
         0,
         0
       ],
-      "max_length": 181,
+      "max_length": 170,
       "wrappers": 1
     },
     "src/native_adapter.rs": {
@@ -821,7 +832,7 @@ execution; the exact commands and remaining frontiers are in the job evidence.
     },
     "tests/fixtures.rs": {
       "complexity": 0,
-      "functions": 29,
+      "functions": 30,
       "length_tails": [
         0,
         0,
@@ -830,7 +841,7 @@ execution; the exact commands and remaining frontiers are in the job evidence.
         0
       ],
       "max_length": 3,
-      "wrappers": 29
+      "wrappers": 30
     },
     "tests/fixtures/device_clock.c": {
       "complexity": 2,
@@ -1221,6 +1232,19 @@ execution; the exact commands and remaining frontiers are in the job evidence.
       ],
       "max_length": 47,
       "wrappers": 1
+    },
+    "tests/r_native_layout.py": {
+      "complexity": 25,
+      "functions": 7,
+      "length_tails": [
+        2,
+        1,
+        0,
+        0,
+        0
+      ],
+      "max_length": 59,
+      "wrappers": 2
     },
     "tests/reports.py": {
       "complexity": 37,

@@ -105,8 +105,8 @@ outputs = ["reference-interpreter/target/release/bennett-isa-ref"]
 # Explicit R-contract producer; historical producers above retain their identities.
 [siblings."bennett-plugin-r-contract"]
 repo = "bennett-plugin"
-sha = "1bfe6613624bfd004b5dff649f9e4db8e1b07a44"
-note = "rung-3 classical R producer advertising dialect-0.3-r1;isa-0.9"
+sha = "d6fc0308eda06292df9b0f35b6ff173385fd39af"
+note = "R producer with receipt-bound device-global/native-symbol correspondence; dialect-0.3-r1;isa-0.9"
 
 [siblings."bennett-arith-r-contract"]
 repo = "bennett-arith"

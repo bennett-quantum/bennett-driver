@@ -75,6 +75,15 @@ mod r_contract {
     }
 }
 
+mod r_native_layout {
+    use super::support;
+
+    #[test]
+    fn published_r_globals_preserve_authenticated_native_mapping() {
+        support::fixture("r_native_layout.py");
+    }
+}
+
 mod environment {
     use super::support;
 

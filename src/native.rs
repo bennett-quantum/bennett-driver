@@ -342,7 +342,6 @@ impl Comparison {
         checked: &CheckedComparison,
     ) -> Result<NativeProgram> {
         let m = self.m;
-        let device = &self.device;
         let runtime = &self.runtime;
         let support = &self.support;
         let materialisation = &self.materialisation;
@@ -351,39 +350,7 @@ impl Comparison {
             "native_support",
             artifact(support, o.get(OptionKey::NativeSupportSha256))?,
         );
-        if let Some(p) = o.get(OptionKey::ComparisonLayout) {
-            b.record
-                .set("comparison_layout", artifact(&absolute(p)?, None)?);
-        }
-        b.run(
-            "native-layout",
-            vec![
-                "python3".into(),
-                "-c".into(),
-                include_str!("../scripts/native-layout.py").into(),
-                b.out.display().to_string(),
-                device.display().to_string(),
-                o.get(OptionKey::ComparisonLayout).unwrap_or("").into(),
-                o.data_base.as_str().into(),
-                o.get(OptionKey::LayoutTextBase).unwrap_or("").into(),
-            ],
-            None,
-        )?;
-        let config = b.out.join("native-layout.bc");
-        b.run(
-            "native-layout-assemble",
-            vec![
-                tool(m, "llvm-as"),
-                b.out.join("native-layout.ll").display().to_string(),
-                "-o".into(),
-                config.display().to_string(),
-            ],
-            None,
-        )?;
-        b.record.set(
-            "resolved_layout",
-            artifact(&b.out.join("resolved-layout.json"), None)?,
-        );
+        let config = self.resolve_layout(o, b)?;
         let native_source = if let Some(adapter) = &materialisation {
             let finalised = adapter.run(b, m, native_adapter::Phase::Finalise, checked)?;
             self.require_startup(o, b, &adapter.entry)?;
@@ -497,6 +464,55 @@ impl Comparison {
             .map(String::from)
             .collect();
         Ok(NativeProgram { closed, residual })
+    }
+    fn resolve_layout(&self, o: &Options, b: &mut Build) -> Result<PathBuf> {
+        let (report, receipt, entry) = self.materialisation.as_ref().map_or_else(
+            || (String::new(), String::new(), String::new()),
+            |adapter| {
+                (
+                    b.out.join("native-preparation.json").display().to_string(),
+                    adapter.receipt.display().to_string(),
+                    adapter.entry.clone(),
+                )
+            },
+        );
+        if let Some(p) = o.get(OptionKey::ComparisonLayout) {
+            b.record
+                .set("comparison_layout", artifact(&absolute(p)?, None)?);
+        }
+        b.run(
+            "native-layout",
+            vec![
+                "python3".into(),
+                "-c".into(),
+                include_str!("../scripts/native-layout.py").into(),
+                b.out.display().to_string(),
+                self.device.display().to_string(),
+                o.get(OptionKey::ComparisonLayout).unwrap_or("").into(),
+                o.data_base.as_str().into(),
+                o.get(OptionKey::LayoutTextBase).unwrap_or("").into(),
+                report,
+                receipt,
+                entry,
+            ],
+            None,
+        )?;
+        let config = b.out.join("native-layout.bc");
+        b.run(
+            "native-layout-assemble",
+            vec![
+                tool(self.m, "llvm-as"),
+                b.out.join("native-layout.ll").display().to_string(),
+                "-o".into(),
+                config.display().to_string(),
+            ],
+            None,
+        )?;
+        b.record.set(
+            "resolved_layout",
+            artifact(&b.out.join("resolved-layout.json"), None)?,
+        );
+        Ok(config)
     }
     fn require_startup(&self, o: &Options, b: &mut Build, entry: &str) -> Result<()> {
         let binding = Self::startup_binding(b)?;
